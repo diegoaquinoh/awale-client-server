@@ -24,6 +24,10 @@ using namespace std;
 
 
 char board[12];
+char scores[2];
+char current_player;
+char game_over = 0;
+
 
 
 char collected = 0;
@@ -35,8 +39,14 @@ char is_game_over();
 void collect_remaining_seeds();
 void declare_winner();
 
-void play_turn(char player);
+char collect_seeds(char player, char last_pit_index);
+
+char play_turn(char player, char last_pit_index);
 void move(char player, char pit_index);
+
+void switch_player();
+
+void game_loop();
 
 
 #endif // Game_H
