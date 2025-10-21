@@ -67,7 +67,7 @@ void play_turn(char player)
     return;
 }
 
-char collect_seeds(char player, char last_pit_index)
+char collect_seeds(char player, char last_pit_index) //Ne pas re remplir le trou d'origine
 {
     if (((player == 1)&&(last_pit_index<6 && last_pit_index>=0) ||
          (player == 0)&&(last_pit_index>5 && last_pit_index<=11))
