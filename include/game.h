@@ -14,7 +14,7 @@
 #include <stdlib.h>
 
 //--------------------------------------------------- Interfaces used
-using namespace std;
+
 
 //------------------------------------------------------------- Constantes
 //------------------------------------------------------------------ Types
@@ -41,8 +41,8 @@ void declare_winner();
 
 char collect_seeds(char player, char last_pit_index);
 
-char play_turn(char player, char last_pit_index);
-void move(char player, char pit_index);
+void play_turn(char player);
+char move(char player);
 
 void switch_player();
 
