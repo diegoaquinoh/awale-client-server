@@ -26,23 +26,40 @@ void init_game()
 void display_board()
 {
     printf("\n");
-    printf("      [11][10][9][8][7][6]\n");
-    printf("      ");
+    printf("    P2 (%d pts)\n", scores[1]);
+    printf("-------------------------\n");
     for (int i = 11; i >= 6; i--)
     {
-        printf(" %2d ", board[i]);
+        printf("%2d  ", i);
     }
     printf("\n");
-    printf("P2 %2d                    %2d P1\n", scores[1], scores[0]);
-    printf("      ");
+    printf("+---+---+---+---+---+---+\n");
+    printf("|");
+    for (int i = 11; i >= 6; i--)
+    {
+        printf("%2d |", board[i]);
+    }
+    printf("\n");
+    printf("+---+---+---+---+---+---+\n");
+    printf("|");
     for (int i = 0; i <= 5; i++)
     {
-        printf(" %2d ", board[i]);
+        printf("%2d |", board[i]);
     }
     printf("\n");
-    printf("      [0] [1] [2] [3] [4] [5]\n");
+    printf("+---+---+---+---+---+---+\n");
+    printf(" ");
+    for (int i = 0; i <= 5; i++)
+    {
+        printf("%2d  ", i);
+    }
+    printf("\n");
+
+    printf("--------------------------\n");
+    printf("    P1 (%d pts)\n", scores[0]);
     printf("\n");
 }
+
 
 char play_turn(char player)
 {
