@@ -19,4 +19,13 @@ using namespace std;
 
 //-------------------------------- Declarations
 
+
+
+char board[12];
+
+
+char collected = 0;
+
+void init_game();
+
 #endif // Game_H
