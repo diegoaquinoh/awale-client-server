@@ -35,16 +35,17 @@ char collected = 0;
 void init_game();
 
 void display_board();
-char is_game_over();
-void collect_remaining_seeds();
-void declare_winner();
+char is_game_over(char  continued);
+void collect_remaining_seeds(char continued);
+void declare_winner(char continued);
 
 char collect_seeds(char player, char last_pit_index);
 
-void play_turn(char player);
+char play_turn(char player);
 char move(char player);
 
 void switch_player();
+char proposition_draw(char player);
 
 void game_loop();
 
