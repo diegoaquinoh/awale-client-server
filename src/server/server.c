@@ -146,6 +146,11 @@ int main() {
                     continue;
                 }
                 
+                // Informer l'adversaire du coup joué
+                char notify[128];
+                snprintf(notify, sizeof(notify), "MSG Le joueur %d a déplacé les graines de la case %d.\n", p + 1, pit);
+                send_line(cfd[other], notify);
+                
                 char gained = collect_seeds((char)p, (char)last);
                 scores[p] += gained;
                 // Vérification de fin de partie
@@ -182,15 +187,18 @@ int main() {
                 
                 if (!strcmp(ans, "YES")) {
                     continued = DRAW;
-                    if (is_game_over((char)continued)) {
-                        collect_remaining_seeds((char)continued);
-                        broadcast_state(cfd[0], cfd[1]);
-                        send_line(cfd[0], "END draw\n");
-                        send_line(cfd[1], "END draw\n");
-                        break;
-                    }
+                    game_over = 1;
+                    collect_remaining_seeds((char)continued);
+                    send_line(cfd[0], "MSG Égalité acceptée.\n");
+                    send_line(cfd[1], "MSG Égalité acceptée.\n");
+                    send_line(cfd[0], "END draw\n");
+                    send_line(cfd[1], "END draw\n");
+                    running = 0;
+                    break;
                 } else {
                     send_line(cfd[p], "MSG Egalité refusée.\n");
+                    send_line(cfd[other], "MSG Egalité refusée par l'adversaire.\n");
+                    broadcast_state(cfd[0], cfd[1]);
                 }
             }
         }
