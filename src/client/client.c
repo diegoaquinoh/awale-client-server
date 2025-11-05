@@ -226,7 +226,7 @@ int main(int argc, char **argv) {
                     myturn = (myrole == cur);
                     
                     if (myturn) {
-                        printf("Votre tour. Entrez un pit (ou 'd' pour égalité, 'q' pour abandonner): ");
+                        printf("Votre tour. Entrez un pit, d, q ou chat + message: ");
                         fflush(stdout);
                     }
                 }
@@ -248,9 +248,21 @@ int main(int argc, char **argv) {
                 puts(buf + 4);
                 
                 if (myturn && strstr(buf + 4, "invalide")) {
-                    printf("Votre tour. Entrez un pit (ou 'd' pour égalité, 'q' pour abandonner): ");
+                    printf("Votre tour. Entrez un pit, d, q ou chat + message: ");
                     fflush(stdout);
                 } else if (!in_game && !strstr(buf + 4, "Bienvenue")) {
+                    printf("> ");
+                    fflush(stdout);
+                }
+            }
+            // Message de chat
+            else if (!strncmp(buf, "CHAT ", 5)) {
+                printf("\n%s\n", buf + 5);
+                
+                if (myturn && in_game) {
+                    printf("Votre tour. Entrez un pit, d, q ou chat + message: ");
+                    fflush(stdout);
+                } else if (!in_game) {
                     printf("> ");
                     fflush(stdout);
                 }
@@ -288,6 +300,12 @@ int main(int argc, char **argv) {
                 } else if (buf[0] == 'd' || buf[0] == 'D') {
                     send(fd, "DRAW\n", 5, 0);
                     myturn = 0;
+                } else if (!strncmp(buf, "chat ", 5)) {
+                    char out[512];
+                    snprintf(out, sizeof(out), "CHAT %s\n", buf + 5);
+                    send(fd, out, strlen(out), 0);
+                    printf("Votre tour. Entrez un pit, d, q ou chat + message: ");
+                    fflush(stdout);
                 } else {
                     char out[300];
                     snprintf(out, sizeof(out), "MOVE %s\n", buf);
@@ -298,6 +316,10 @@ int main(int argc, char **argv) {
                 // En partie mais pas notre tour
                 if (buf[0] == 'q' || buf[0] == 'Q') {
                     send(fd, "QUIT\n", 5, 0);
+                } else if (!strncmp(buf, "chat ", 5)) {
+                    char out[512];
+                    snprintf(out, sizeof(out), "CHAT %s\n", buf + 5);
+                    send(fd, out, strlen(out), 0);
                 }
             } else if (!in_game) {
                 // Hors partie, commandes de lobby
@@ -322,6 +344,10 @@ int main(int argc, char **argv) {
                 } else if (!strncmp(buf, "refuse ", 7)) {
                     char out[128];
                     snprintf(out, sizeof(out), "REFUSE %s\n", buf + 7);
+                    send(fd, out, strlen(out), 0);
+                } else if (!strncmp(buf, "chat ", 5)) {
+                    char out[512];
+                    snprintf(out, sizeof(out), "CHAT %s\n", buf + 5);
                     send(fd, out, strlen(out), 0);
                 } else {
                     printf("Commande inconnue. Tapez 'list' pour voir les joueurs.\n");

@@ -428,6 +428,102 @@ int main() {
                     printf("%s regarde la partie %d\n", clients[i].username, game_id);
                 }
             }
+            // Commande CHAT - Envoyer un message à un joueur ou à tous (broadcast)
+            else if (!strncmp(buf, "CHAT ", 5)) {
+                char* message = buf + 5;
+                
+                // Vérifier si c'est un message privé (format: @username message) ou broadcast (format: message)
+                if (message[0] == '@') {
+                    // Message privé
+                    char* space = strchr(message + 1, ' ');
+                    if (space) {
+                        *space = '\0';
+                        char* target_username = message + 1;
+                        char* msg_content = space + 1;
+                        
+                        int target_idx = find_client_by_username(target_username);
+                        
+                        if (target_idx == -1) {
+                            send_line(clients[i].socket_fd, "MSG Utilisateur introuvable.\n");
+                        } else if (target_idx == i) {
+                            send_line(clients[i].socket_fd, "MSG Vous ne pouvez pas vous envoyer un message à vous-même.\n");
+                        } else {
+                            // Envoyer le message privé
+                            char chat_msg[512];
+                            snprintf(chat_msg, sizeof(chat_msg), "CHAT [Privé de %s]: %s\n", 
+                                     clients[i].username, msg_content);
+                            send_line(clients[target_idx].socket_fd, chat_msg);
+                            
+                            // Confirmation à l'expéditeur
+                            snprintf(chat_msg, sizeof(chat_msg), "CHAT [À %s]: %s\n", 
+                                     target_username, msg_content);
+                            send_line(clients[i].socket_fd, chat_msg);
+                        }
+                    } else {
+                        send_line(clients[i].socket_fd, "MSG Format invalide. Utilisez: chat @username message\n");
+                    }
+                } else {
+                    // Message broadcast selon le contexte
+                    char chat_msg[512];
+                    
+                    if (clients[i].status == CLIENT_IN_GAME) {
+                        // En partie : envoyer à l'adversaire et aux spectateurs
+                        Game* g = find_game_for_client(i);
+                        if (g) {
+                            snprintf(chat_msg, sizeof(chat_msg), "CHAT [%s]: %s\n", 
+                                     clients[i].username, message);
+                            
+                            // Envoyer à l'adversaire
+                            int opponent_idx = clients[i].opponent_index;
+                            if (opponent_idx >= 0 && clients[opponent_idx].socket_fd > 0) {
+                                send_line(clients[opponent_idx].socket_fd, chat_msg);
+                            }
+                            
+                            // Envoyer aux spectateurs
+                            for (int j = 0; j < g->num_spectators; j++) {
+                                int spec_idx = g->spectator_indices[j];
+                                if (spec_idx >= 0 && clients[spec_idx].socket_fd > 0) {
+                                    send_line(clients[spec_idx].socket_fd, chat_msg);
+                                }
+                            }
+                            
+                            // Echo à l'expéditeur
+                            send_line(clients[i].socket_fd, chat_msg);
+                        }
+                    } else if (clients[i].status == CLIENT_SPECTATING) {
+                        // En tant que spectateur : envoyer aux joueurs et autres spectateurs
+                        Game* g = &games[clients[i].watching_game];
+                        snprintf(chat_msg, sizeof(chat_msg), "CHAT [Spectateur %s]: %s\n", 
+                                 clients[i].username, message);
+                        
+                        // Envoyer aux joueurs
+                        for (int j = 0; j < 2; j++) {
+                            int player_idx = g->client_indices[j];
+                            if (player_idx >= 0 && clients[player_idx].socket_fd > 0) {
+                                send_line(clients[player_idx].socket_fd, chat_msg);
+                            }
+                        }
+                        
+                        // Envoyer aux autres spectateurs
+                        for (int j = 0; j < g->num_spectators; j++) {
+                            int spec_idx = g->spectator_indices[j];
+                            if (spec_idx >= 0 && clients[spec_idx].socket_fd > 0) {
+                                send_line(clients[spec_idx].socket_fd, chat_msg);
+                            }
+                        }
+                    } else {
+                        // Hors partie : broadcast à tous les joueurs en ligne
+                        snprintf(chat_msg, sizeof(chat_msg), "CHAT [Global - %s]: %s\n", 
+                                 clients[i].username, message);
+                        
+                        for (int j = 0; j < num_clients; j++) {
+                            if (clients[j].socket_fd > 0 && clients[j].status == CLIENT_WAITING) {
+                                send_line(clients[j].socket_fd, chat_msg);
+                            }
+                        }
+                    }
+                }
+            }
             // Commande CHALLENGE - Défier un autre joueur
             else if (!strncmp(buf, "CHALLENGE ", 10)) {
                 char target[MAX_USERNAME_LEN];
