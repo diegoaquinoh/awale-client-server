@@ -5,11 +5,26 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "../../include/game.h"
 #include "../../include/net.h"
 
 #define PORT 4321
+
+// Structure pour une partie en cours
+typedef struct {
+    int client_indices[2];  // Indices des deux joueurs
+    char board[12];
+    char scores[2];
+    char current_player;
+    char active;
+} Game;
+
+// Variables globales
+Client clients[MAX_CLIENTS];
+Game games[MAX_CLIENTS / 2];
+int num_clients = 0;
 
 /**
  * Reçoit une ligne depuis un socket
@@ -47,25 +62,106 @@ static int recv_line(int fd, char *buf, size_t cap) {
 static void send_line(int fd, const char* s) {
     send(fd, s, strlen(s), 0);
 }
+
 /**
- * Diffuse l'état actuel du jeu aux deux clients
- * @param c0 Socket du client 0
- * @param c1 Socket du client 1
+ * Initialise une nouvelle partie
  */
-static void broadcast_state(int c0, int c1) {
+static void init_game_state(Game* g) {
+    for (int i = 0; i < 12; i++) {
+        g->board[i] = 4;
+    }
+    g->scores[0] = 0;
+    g->scores[1] = 0;
+    g->active = 1;
+}
+
+/**
+ * Trouve l'index d'un client par son socket
+ */
+static int find_client_by_socket(int fd) {
+    for (int i = 0; i < num_clients; i++) {
+        if (clients[i].socket_fd == fd) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/**
+ * Trouve l'index d'un client par son username
+ */
+static int find_client_by_username(const char* username) {
+    for (int i = 0; i < num_clients; i++) {
+        if (strcmp(clients[i].username, username) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/**
+ * Envoie la liste des utilisateurs en ligne à un client
+ */
+static void send_online_users(int client_idx) {
+    char msg[1024] = "USERLIST";
+    
+    for (int i = 0; i < num_clients; i++) {
+        if (i != client_idx && clients[i].status != CLIENT_IN_GAME) {
+            strcat(msg, " ");
+            strcat(msg, clients[i].username);
+        }
+    }
+    
+    strcat(msg, "\n");
+    send_line(clients[client_idx].socket_fd, msg);
+}
+
+/**
+ * Trouve la partie d'un client
+ */
+static Game* find_game_for_client(int client_idx) {
+    for (int i = 0; i < MAX_CLIENTS / 2; i++) {
+        if (games[i].active && 
+            (games[i].client_indices[0] == client_idx || 
+             games[i].client_indices[1] == client_idx)) {
+            return &games[i];
+        }
+    }
+    return NULL;
+}
+
+/**
+ * Diffuse l'état actuel du jeu aux deux clients d'une partie
+ */
+static void broadcast_game_state(Game* g) {
     char line[256];
+    int c0_idx = g->client_indices[0];
+    int c1_idx = g->client_indices[1];
     
     snprintf(line, sizeof(line),
         "STATE %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n",
-        board[0], board[1], board[2], board[3], board[4], board[5],
-        board[6], board[7], board[8], board[9], board[10], board[11],
-        scores[0], scores[1], current_player);
+        g->board[0], g->board[1], g->board[2], g->board[3], g->board[4], g->board[5],
+        g->board[6], g->board[7], g->board[8], g->board[9], g->board[10], g->board[11],
+        g->scores[0], g->scores[1], g->current_player);
     
-    send_line(c0, line);
-    send_line(c1, line);
+    send_line(clients[c0_idx].socket_fd, line);
+    send_line(clients[c1_idx].socket_fd, line);
 }
 
 int main() {
+    srand(time(NULL));
+    
+    // Initialisation des structures
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        clients[i].socket_fd = -1;
+        clients[i].status = CLIENT_CONNECTED;
+        clients[i].opponent_index = -1;
+    }
+    
+    for (int i = 0; i < MAX_CLIENTS / 2; i++) {
+        games[i].active = 0;
+    }
+    
     // Création du socket serveur
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     
@@ -80,169 +176,300 @@ int main() {
     a.sin_port = htons(PORT);
     
     // Liaison et écoute
-    if (bind(srv, (struct sockaddr*)&a, sizeof(a)) < 0 || listen(srv, 2) < 0) {
+    if (bind(srv, (struct sockaddr*)&a, sizeof(a)) < 0 || listen(srv, 10) < 0) {
         perror("bind/listen");
         return 1;
     }
     
     printf("Server on %d\n", PORT);
     
-    // Acceptation des connexions et enregistrement des clients
-    Client clients[2];
-    
-    for (int i = 0; i < 2; i++) {
-        clients[i].socket_fd = accept(srv, NULL, NULL);
-        if (clients[i].socket_fd < 0) {
-            perror("accept");
-            return 1;
-        }
-        clients[i].player_id = i;
-        
-        // Demander le username au client
-        send_line(clients[i].socket_fd, "REGISTER\n");
-        
-        char buf[128];
-        if (recv_line(clients[i].socket_fd, buf, sizeof(buf)) < 0) {
-            perror("recv username");
-            return 1;
-        }
-        
-        // Extraire le username (format: "USERNAME <name>")
-        if (strncmp(buf, "USERNAME ", 9) == 0) {
-            strncpy(clients[i].username, buf + 9, MAX_USERNAME_LEN - 1);
-            clients[i].username[MAX_USERNAME_LEN - 1] = '\0';
-        } else {
-            strcpy(clients[i].username, "Anonymous");
-        }
-        
-        printf("Client %d enregistré: %s\n", i + 1, clients[i].username);
-        
-        // Confirmation au client
-        char welcome[128];
-        snprintf(welcome, sizeof(welcome), "MSG Bienvenue %s!\n", clients[i].username);
-        send_line(clients[i].socket_fd, welcome);
-    }
-    
-    int cfd[2];
-    cfd[0] = clients[0].socket_fd;
-    cfd[1] = clients[1].socket_fd;
-    
-    // Attribution des rôles aux clients
-    send_line(cfd[0], "ROLE 0\n");
-    send_line(cfd[1], "ROLE 1\n");
-    
-    // Messages d'information aux joueurs avec les usernames
-    char msg[128];
-    snprintf(msg, sizeof(msg), "MSG Vous êtes P1 (pits 0..5). Votre adversaire est %s\n", clients[1].username);
-    send_line(cfd[0], msg);
-    
-    snprintf(msg, sizeof(msg), "MSG Vous êtes P2 (pits 6..11). Votre adversaire est %s\n", clients[0].username);
-    send_line(cfd[1], msg);
-    
-    // Initialisation du jeu et envoi de l'état initial
-    init_game();
-    broadcast_state(cfd[0], cfd[1]);
-    // Variables de contrôle du jeu
-    int continued = CONTINUE;
-    int running = 1;
-    
     // Boucle principale du serveur
-    while (running) {
-        // Préparation du select pour écouter les deux clients
+    while (1) {
         fd_set rfds;
         FD_ZERO(&rfds);
-        FD_SET(cfd[0], &rfds);
-        FD_SET(cfd[1], &rfds);
+        FD_SET(srv, &rfds);
         
-        int maxfd = cfd[0] > cfd[1] ? cfd[0] : cfd[1];
+        int maxfd = srv;
+        
+        // Ajouter tous les clients connectés au select
+        for (int i = 0; i < num_clients; i++) {
+            if (clients[i].socket_fd > 0) {
+                FD_SET(clients[i].socket_fd, &rfds);
+                if (clients[i].socket_fd > maxfd) {
+                    maxfd = clients[i].socket_fd;
+                }
+            }
+        }
         
         if (select(maxfd + 1, &rfds, NULL, NULL, NULL) <= 0) {
             continue;
         }
         
-        int p = current_player;
-        int other = 1 - p;
-        // Traitement des messages du joueur actuel
-        if (FD_ISSET(cfd[p], &rfds)) {
-            char buf[128];
-            
-            if (recv_line(cfd[p], buf, sizeof(buf)) < 0) {
-                running = 0;
-                break;
+        // Nouvelle connexion
+        if (FD_ISSET(srv, &rfds)) {
+            if (num_clients < MAX_CLIENTS) {
+                int new_fd = accept(srv, NULL, NULL);
+                if (new_fd >= 0) {
+                    clients[num_clients].socket_fd = new_fd;
+                    clients[num_clients].status = CLIENT_CONNECTED;
+                    clients[num_clients].opponent_index = -1;
+                    
+                    // Demander le username
+                    send_line(new_fd, "REGISTER\n");
+                    
+                    char buf[128];
+                    if (recv_line(new_fd, buf, sizeof(buf)) > 0) {
+                        if (strncmp(buf, "USERNAME ", 9) == 0) {
+                            strncpy(clients[num_clients].username, buf + 9, MAX_USERNAME_LEN - 1);
+                            clients[num_clients].username[MAX_USERNAME_LEN - 1] = '\0';
+                        } else {
+                            strcpy(clients[num_clients].username, "Anonymous");
+                        }
+                        
+                        printf("Client connecté: %s\n", clients[num_clients].username);
+                        
+                        char welcome[128];
+                        snprintf(welcome, sizeof(welcome), "MSG Bienvenue %s! Tapez 'list' pour voir les joueurs disponibles.\n", clients[num_clients].username);
+                        send_line(new_fd, welcome);
+                        
+                        clients[num_clients].status = CLIENT_WAITING;
+                        num_clients++;
+                    }
+                }
+            }
+        }
+        
+        // Traiter les messages des clients existants
+        for (int i = 0; i < num_clients; i++) {
+            if (clients[i].socket_fd <= 0 || !FD_ISSET(clients[i].socket_fd, &rfds)) {
+                continue;
             }
             
-            // Traitement d'un coup
-            if (!strncmp(buf, "MOVE ", 5)) {
-                int pit = atoi(buf + 5);
-                int last = apply_move_from_pit(p, pit);
+            char buf[256];
+            if (recv_line(clients[i].socket_fd, buf, sizeof(buf)) <= 0) {
+                // Déconnexion
+                printf("Client déconnecté: %s\n", clients[i].username);
+                close(clients[i].socket_fd);
+                clients[i].socket_fd = -1;
+                continue;
+            }
+            
+            // Commande LIST - Demander la liste des utilisateurs
+            if (!strcmp(buf, "LIST")) {
+                send_online_users(i);
+            }
+            // Commande CHALLENGE - Défier un autre joueur
+            else if (!strncmp(buf, "CHALLENGE ", 10)) {
+                char target[MAX_USERNAME_LEN];
+                strncpy(target, buf + 10, MAX_USERNAME_LEN - 1);
+                target[MAX_USERNAME_LEN - 1] = '\0';
                 
-                if (last == -2) {
-                    send_line(cfd[p], "MSG Coup invalide.\n");
+                int target_idx = find_client_by_username(target);
+                
+                if (target_idx == -1) {
+                    send_line(clients[i].socket_fd, "MSG Joueur introuvable.\n");
+                } else if (clients[target_idx].status == CLIENT_IN_GAME) {
+                    send_line(clients[i].socket_fd, "MSG Ce joueur est déjà en partie.\n");
+                } else {
+                    // Envoyer le défi
+                    char challenge_msg[128];
+                    snprintf(challenge_msg, sizeof(challenge_msg), "CHALLENGED_BY %s\n", clients[i].username);
+                    send_line(clients[target_idx].socket_fd, challenge_msg);
+                    
+                    send_line(clients[i].socket_fd, "MSG Défi envoyé. En attente de réponse...\n");
+                }
+            }
+            // Commande ACCEPT - Accepter un défi
+            else if (!strncmp(buf, "ACCEPT ", 7)) {
+                char challenger[MAX_USERNAME_LEN];
+                strncpy(challenger, buf + 7, MAX_USERNAME_LEN - 1);
+                challenger[MAX_USERNAME_LEN - 1] = '\0';
+                
+                int challenger_idx = find_client_by_username(challenger);
+                
+                if (challenger_idx == -1) {
+                    send_line(clients[i].socket_fd, "MSG Joueur introuvable.\n");
+                } else {
+                    // Créer une nouvelle partie
+                    int game_idx = -1;
+                    for (int g = 0; g < MAX_CLIENTS / 2; g++) {
+                        if (!games[g].active) {
+                            game_idx = g;
+                            break;
+                        }
+                    }
+                    
+                    if (game_idx == -1) {
+                        send_line(clients[i].socket_fd, "MSG Serveur plein.\n");
+                        continue;
+                    }
+                    
+                    // Décider aléatoirement qui commence
+                    int first_player = rand() % 2;
+                    
+                    if (first_player == 0) {
+                        games[game_idx].client_indices[0] = challenger_idx;
+                        games[game_idx].client_indices[1] = i;
+                    } else {
+                        games[game_idx].client_indices[0] = i;
+                        games[game_idx].client_indices[1] = challenger_idx;
+                    }
+                    
+                    init_game_state(&games[game_idx]);
+                    games[game_idx].current_player = 0;
+                    
+                    // Mettre à jour les statuts
+                    clients[challenger_idx].status = CLIENT_IN_GAME;
+                    clients[challenger_idx].opponent_index = i;
+                    clients[i].status = CLIENT_IN_GAME;
+                    clients[i].opponent_index = challenger_idx;
+                    
+                    // Attribuer les rôles
+                    clients[games[game_idx].client_indices[0]].player_id = 0;
+                    clients[games[game_idx].client_indices[1]].player_id = 1;
+                    
+                    send_line(clients[games[game_idx].client_indices[0]].socket_fd, "ROLE 0\n");
+                    send_line(clients[games[game_idx].client_indices[1]].socket_fd, "ROLE 1\n");
+                    
+                    // Informer les joueurs
+                    char msg[128];
+                    snprintf(msg, sizeof(msg), "MSG Partie commencée! Vous êtes P1 (pits 0..5). Adversaire: %s\n", 
+                             clients[games[game_idx].client_indices[1]].username);
+                    send_line(clients[games[game_idx].client_indices[0]].socket_fd, msg);
+                    
+                    snprintf(msg, sizeof(msg), "MSG Partie commencée! Vous êtes P2 (pits 6..11). Adversaire: %s\n", 
+                             clients[games[game_idx].client_indices[0]].username);
+                    send_line(clients[games[game_idx].client_indices[1]].socket_fd, msg);
+                    
+                    // Envoyer l'état initial
+                    broadcast_game_state(&games[game_idx]);
+                }
+            }
+            // Commande REFUSE - Refuser un défi
+            else if (!strncmp(buf, "REFUSE ", 7)) {
+                char challenger[MAX_USERNAME_LEN];
+                strncpy(challenger, buf + 7, MAX_USERNAME_LEN - 1);
+                challenger[MAX_USERNAME_LEN - 1] = '\0';
+                
+                int challenger_idx = find_client_by_username(challenger);
+                
+                if (challenger_idx != -1) {
+                    char msg[128];
+                    snprintf(msg, sizeof(msg), "MSG %s a refusé votre défi.\n", clients[i].username);
+                    send_line(clients[challenger_idx].socket_fd, msg);
+                }
+                
+                send_line(clients[i].socket_fd, "MSG Défi refusé.\n");
+            }
+            // Commandes de jeu (MOVE, DRAW) pour les clients en partie
+            else if (clients[i].status == CLIENT_IN_GAME) {
+                Game* g = find_game_for_client(i);
+                if (g == NULL) continue;
+                
+                int player_id = clients[i].player_id;
+                int opponent_idx = clients[i].opponent_index;
+                
+                // Vérifier que c'est bien le tour du joueur
+                if (g->current_player != player_id) {
+                    send_line(clients[i].socket_fd, "MSG Ce n'est pas votre tour.\n");
                     continue;
                 }
                 
-                // Informer l'adversaire du coup joué avec le username
-                char notify[128];
-                snprintf(notify, sizeof(notify), "MSG %s a déplacé les graines de la case %d.\n", 
-                         clients[p].username, pit);
-                send_line(cfd[other], notify);
-                
-                char gained = collect_seeds((char)p, (char)last);
-                scores[p] += gained;
-                // Vérification de fin de partie
-                if (is_game_over((char)continued)) {
-                    collect_remaining_seeds((char)continued);
-                    broadcast_state(cfd[0], cfd[1]);
+                // Traitement d'un coup
+                if (!strncmp(buf, "MOVE ", 5)) {
+                    int pit = atoi(buf + 5);
                     
-                    if (scores[0] == scores[1]) {
-                        send_line(cfd[0], "END draw\n");
-                        send_line(cfd[1], "END draw\n");
-                    } else {
-                        int w = (scores[0] > scores[1]) ? 0 : 1;
-                        char msg[32];
-                        snprintf(msg, sizeof(msg), "END winner %d\n", w);
-                        send_line(cfd[0], msg);
-                        send_line(cfd[1], msg);
+                    // Copier l'état du jeu dans les variables globales
+                    memcpy(board, g->board, 12);
+                    
+                    int last = apply_move_from_pit(player_id, pit);
+                    
+                    if (last == -2) {
+                        send_line(clients[i].socket_fd, "MSG Coup invalide.\n");
+                        continue;
                     }
-                    break;
+                    
+                    // Mettre à jour l'état du jeu
+                    memcpy(g->board, board, 12);
+                    
+                    // Informer l'adversaire
+                    char notify[128];
+                    snprintf(notify, sizeof(notify), "MSG %s a déplacé les graines de la case %d.\n", 
+                             clients[i].username, pit);
+                    send_line(clients[opponent_idx].socket_fd, notify);
+                    
+                    // Capturer les graines
+                    char gained = collect_seeds((char)player_id, (char)last);
+                    g->scores[player_id] += gained;
+                    
+                    // Vérifier fin de partie
+                    memcpy(board, g->board, 12);
+                    memcpy(scores, g->scores, 2);
+                    
+                    if (is_game_over(CONTINUE)) {
+                        collect_remaining_seeds(CONTINUE);
+                        memcpy(g->scores, scores, 2);
+                        memcpy(g->board, board, 12);
+                        broadcast_game_state(g);
+                        
+                        if (g->scores[0] == g->scores[1]) {
+                            send_line(clients[g->client_indices[0]].socket_fd, "END draw\n");
+                            send_line(clients[g->client_indices[1]].socket_fd, "END draw\n");
+                        } else {
+                            int w = (g->scores[0] > g->scores[1]) ? 0 : 1;
+                            char msg[32];
+                            snprintf(msg, sizeof(msg), "END winner %d\n", w);
+                            send_line(clients[g->client_indices[0]].socket_fd, msg);
+                            send_line(clients[g->client_indices[1]].socket_fd, msg);
+                        }
+                        
+                        // Réinitialiser les statuts
+                        clients[g->client_indices[0]].status = CLIENT_WAITING;
+                        clients[g->client_indices[1]].status = CLIENT_WAITING;
+                        g->active = 0;
+                        continue;
+                    }
+                    
+                    // Changement de joueur
+                    g->current_player = 1 - g->current_player;
+                    broadcast_game_state(g);
                 }
-                
-                // Changement de joueur et diffusion du nouvel état
-                current_player = 1 - current_player;
-                broadcast_state(cfd[0], cfd[1]);
-            } 
-            // Traitement d'une demande d'égalité
-            else if (!strcmp(buf, "DRAW")) {
-                send_line(cfd[other], "ASKDRAW\n");
-                
-                char ans[16];
-                if (recv_line(cfd[other], ans, sizeof(ans)) < 0) {
-                    running = 0;
-                    break;
-                }
-                
-                if (!strcmp(ans, "YES")) {
-                    continued = DRAW;
-                    game_over = 1;
-                    collect_remaining_seeds((char)continued);
-                    send_line(cfd[0], "MSG Égalité acceptée.\n");
-                    send_line(cfd[1], "MSG Égalité acceptée.\n");
-                    send_line(cfd[0], "END draw\n");
-                    send_line(cfd[1], "END draw\n");
-                    running = 0;
-                    break;
-                } else {
-                    send_line(cfd[p], "MSG Egalité refusée.\n");
-                    send_line(cfd[other], "MSG Egalité refusée par l'adversaire.\n");
-                    broadcast_state(cfd[0], cfd[1]);
+                // Traitement d'une demande d'égalité
+                else if (!strcmp(buf, "DRAW")) {
+                    send_line(clients[opponent_idx].socket_fd, "ASKDRAW\n");
+                    
+                    char ans[16];
+                    if (recv_line(clients[opponent_idx].socket_fd, ans, sizeof(ans)) > 0) {
+                        if (!strcmp(ans, "YES")) {
+                            memcpy(board, g->board, 12);
+                            memcpy(scores, g->scores, 2);
+                            collect_remaining_seeds(DRAW);
+                            
+                            send_line(clients[g->client_indices[0]].socket_fd, "MSG Égalité acceptée.\n");
+                            send_line(clients[g->client_indices[1]].socket_fd, "MSG Égalité acceptée.\n");
+                            send_line(clients[g->client_indices[0]].socket_fd, "END draw\n");
+                            send_line(clients[g->client_indices[1]].socket_fd, "END draw\n");
+                            
+                            clients[g->client_indices[0]].status = CLIENT_WAITING;
+                            clients[g->client_indices[1]].status = CLIENT_WAITING;
+                            g->active = 0;
+                        } else {
+                            send_line(clients[i].socket_fd, "MSG Égalité refusée.\n");
+                            send_line(clients[opponent_idx].socket_fd, "MSG Égalité refusée par l'adversaire.\n");
+                            broadcast_game_state(g);
+                        }
+                    }
                 }
             }
         }
     }
     
-    // Nettoyage et fermeture des connexions
-    close(cfd[0]);
-    close(cfd[1]);
+    // Nettoyage
+    for (int i = 0; i < num_clients; i++) {
+        if (clients[i].socket_fd > 0) {
+            close(clients[i].socket_fd);
+        }
+    }
     close(srv);
     
     return 0;
