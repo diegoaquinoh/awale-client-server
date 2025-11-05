@@ -17,7 +17,6 @@ extern char board[12];
 extern char scores[2];
 extern char current_player;
 extern char game_over;
-extern char collected;
 
 void init_game();
 void display_board();
