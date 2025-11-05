@@ -402,6 +402,7 @@ int main() {
                     
                     if (last == -2) {
                         send_line(clients[i].socket_fd, "MSG Coup invalide.\n");
+                        broadcast_game_state(g);  // Renvoyer l'état actuel
                         continue;
                     }
                     
