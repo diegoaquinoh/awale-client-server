@@ -113,7 +113,11 @@ int main(int argc, char **argv) {
     printf("  list              - Voir les joueurs disponibles\n");
     printf("  challenge <nom>   - Défier un joueur\n");
     printf("  accept <nom>      - Accepter un défi\n");
-    printf("  refuse <nom>      - Refuser un défi\n\n");
+    printf("  refuse <nom>      - Refuser un défi\n");
+    printf("\nEn partie:\n");
+    printf("  <numéro>          - Jouer une case\n");
+    printf("  d                 - Proposer une égalité\n");
+    printf("  q                 - Abandonner (défaite)\n\n");
     
     while (1) {
         fd_set rfds;
@@ -190,7 +194,7 @@ int main(int argc, char **argv) {
                     myturn = (myrole == cur);
                     
                     if (myturn) {
-                        printf("Votre tour. Entrez un pit (ou 'd' pour DRAW): ");
+                        printf("Votre tour. Entrez un pit (ou 'd' pour égalité, 'q' pour abandonner): ");
                         fflush(stdout);
                     }
                 }
@@ -212,7 +216,7 @@ int main(int argc, char **argv) {
                 puts(buf + 4);
                 
                 if (myturn && strstr(buf + 4, "invalide")) {
-                    printf("Votre tour. Entrez un pit (ou 'd' pour DRAW): ");
+                    printf("Votre tour. Entrez un pit (ou 'd' pour égalité, 'q' pour abandonner): ");
                     fflush(stdout);
                 } else if (!in_game && !strstr(buf + 4, "Bienvenue")) {
                     printf("> ");
@@ -246,14 +250,23 @@ int main(int argc, char **argv) {
             
             if (in_game && myturn) {
                 // En partie, commandes de jeu
-                if (buf[0] == 'd' || buf[0] == 'D') {
+                if (buf[0] == 'q' || buf[0] == 'Q') {
+                    send(fd, "QUIT\n", 5, 0);
+                    myturn = 0;
+                } else if (buf[0] == 'd' || buf[0] == 'D') {
                     send(fd, "DRAW\n", 5, 0);
+                    myturn = 0;
                 } else {
                     char out[300];
                     snprintf(out, sizeof(out), "MOVE %s\n", buf);
                     send(fd, out, strlen(out), 0);
+                    myturn = 0;
                 }
-                myturn = 0;
+            } else if (in_game && !myturn) {
+                // En partie mais pas notre tour
+                if (buf[0] == 'q' || buf[0] == 'Q') {
+                    send(fd, "QUIT\n", 5, 0);
+                }
             } else if (!in_game) {
                 // Hors partie, commandes de lobby
                 if (!strcmp(buf, "list")) {

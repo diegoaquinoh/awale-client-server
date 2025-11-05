@@ -150,6 +150,21 @@ static void broadcast_game_state(Game* g) {
     send_line(clients[c1_idx].socket_fd, line);
 }
 
+/**
+ * Envoie l'état actuel du jeu à un seul client
+ */
+static void send_game_state(Game* g, int client_idx) {
+    char line[256];
+    
+    snprintf(line, sizeof(line),
+        "STATE %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n",
+        g->board[0], g->board[1], g->board[2], g->board[3], g->board[4], g->board[5],
+        g->board[6], g->board[7], g->board[8], g->board[9], g->board[10], g->board[11],
+        g->scores[0], g->scores[1], g->current_player);
+    
+    send_line(clients[client_idx].socket_fd, line);
+}
+
 int main() {
     srand(time(NULL));
     
@@ -222,22 +237,48 @@ int main() {
                     send_line(new_fd, "REGISTER\n");
                     
                     char buf[128];
+                    char username[MAX_USERNAME_LEN];
+                    int username_valid = 0;
+                    
                     if (recv_line(new_fd, buf, sizeof(buf)) > 0) {
                         if (strncmp(buf, "USERNAME ", 9) == 0) {
-                            strncpy(clients[num_clients].username, buf + 9, MAX_USERNAME_LEN - 1);
-                            clients[num_clients].username[MAX_USERNAME_LEN - 1] = '\0';
+                            strncpy(username, buf + 9, MAX_USERNAME_LEN - 1);
+                            username[MAX_USERNAME_LEN - 1] = '\0';
+                            
+                            // Vérifier si le username est déjà pris
+                            int username_taken = 0;
+                            for (int j = 0; j < num_clients; j++) {
+                                if (clients[j].socket_fd > 0 && strcmp(clients[j].username, username) == 0) {
+                                    username_taken = 1;
+                                    break;
+                                }
+                            }
+                            
+                            if (username_taken) {
+                                send_line(new_fd, "MSG Username déjà pris. Déconnexion.\n");
+                                close(new_fd);
+                                printf("Connexion refusée: username '%s' déjà pris\n", username);
+                            } else {
+                                username_valid = 1;
+                            }
                         } else {
-                            strcpy(clients[num_clients].username, "Anonymous");
+                            strcpy(username, "Anonymous");
+                            username_valid = 1;
                         }
                         
-                        printf("Client connecté: %s\n", clients[num_clients].username);
-                        
-                        char welcome[128];
-                        snprintf(welcome, sizeof(welcome), "MSG Bienvenue %s! Tapez 'list' pour voir les joueurs disponibles.\n", clients[num_clients].username);
-                        send_line(new_fd, welcome);
-                        
-                        clients[num_clients].status = CLIENT_WAITING;
-                        num_clients++;
+                        if (username_valid) {
+                            strcpy(clients[num_clients].username, username);
+                            printf("Client connecté: %s\n", clients[num_clients].username);
+                            
+                            char welcome[128];
+                            snprintf(welcome, sizeof(welcome), "MSG Bienvenue %s! Tapez 'list' pour voir les joueurs disponibles.\n", clients[num_clients].username);
+                            send_line(new_fd, welcome);
+                            
+                            clients[num_clients].status = CLIENT_WAITING;
+                            num_clients++;
+                        }
+                    } else {
+                        close(new_fd);
                     }
                 }
             }
@@ -272,6 +313,8 @@ int main() {
                 
                 if (target_idx == -1) {
                     send_line(clients[i].socket_fd, "MSG Joueur introuvable.\n");
+                } else if (target_idx == i) {
+                    send_line(clients[i].socket_fd, "MSG Vous ne pouvez pas vous défier vous-même.\n");
                 } else if (clients[target_idx].status == CLIENT_IN_GAME) {
                     send_line(clients[i].socket_fd, "MSG Ce joueur est déjà en partie.\n");
                 } else {
@@ -385,6 +428,30 @@ int main() {
                 int player_id = clients[i].player_id;
                 int opponent_idx = clients[i].opponent_index;
                 
+                // Commande QUIT - Abandonner la partie
+                if (!strcmp(buf, "QUIT")) {
+                    // Le joueur abandonne, l'adversaire gagne
+                    int winner = 1 - player_id;
+                    
+                    char msg[128];
+                    snprintf(msg, sizeof(msg), "MSG %s a abandonné. Vous gagnez!\n", clients[i].username);
+                    send_line(clients[opponent_idx].socket_fd, msg);
+                    
+                    snprintf(msg, sizeof(msg), "END winner %d\n", winner);
+                    send_line(clients[opponent_idx].socket_fd, msg);
+                    
+                    send_line(clients[i].socket_fd, "MSG Vous avez abandonné.\n");
+                    send_line(clients[i].socket_fd, "END forfeit\n");
+                    
+                    // Réinitialiser les statuts
+                    clients[g->client_indices[0]].status = CLIENT_WAITING;
+                    clients[g->client_indices[1]].status = CLIENT_WAITING;
+                    g->active = 0;
+                    
+                    printf("%s a abandonné contre %s\n", clients[i].username, clients[opponent_idx].username);
+                    continue;
+                }
+                
                 // Vérifier que c'est bien le tour du joueur
                 if (g->current_player != player_id) {
                     send_line(clients[i].socket_fd, "MSG Ce n'est pas votre tour.\n");
@@ -402,7 +469,7 @@ int main() {
                     
                     if (last == -2) {
                         send_line(clients[i].socket_fd, "MSG Coup invalide.\n");
-                        broadcast_game_state(g);  // Renvoyer l'état actuel
+                        send_game_state(g, i);  // Renvoyer l'état seulement au joueur
                         continue;
                     }
                     
