@@ -157,7 +157,7 @@ int main() {
                         send_line(cfd[0], "END draw\n");
                         send_line(cfd[1], "END draw\n");
                     } else {
-                        int w = (scores[0] > scores[1]) ? 1 : 2;
+                        int w = (scores[0] > scores[1]) ? 0 : 1;
                         char msg[32];
                         snprintf(msg, sizeof(msg), "END winner %d\n", w);
                         send_line(cfd[0], msg);
