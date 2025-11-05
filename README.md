@@ -39,3 +39,5 @@ si conflits
 git merge 
 
 et puis tu ouvres vscode , git et tu resous les conflits et valides et commit (tout sur interface vscode)
+
+test
