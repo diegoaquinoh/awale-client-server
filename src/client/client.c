@@ -133,6 +133,7 @@ int main(int argc, char **argv) {
             if(!fgets(buf,sizeof(buf),stdin))break;
             if(buf[0]=='o'||buf[0]=='O')send(fd,"YES\n",4,0);
             else send(fd,"NO\n",3,0);
+        }
         else if (!strncmp(buf, "MSG ", 4)) {
             puts(buf + 4);
             
@@ -163,4 +164,5 @@ int main(int argc, char **argv) {
     
     close(fd);
     return 0;
+
 }

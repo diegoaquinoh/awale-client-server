@@ -88,8 +88,8 @@ char play_turn(char player)
 
 char collect_seeds(char player, char last_pit_index)
 {
-    if (((player == 1) && (last_pit_index < 6 && last_pit_index >= 0) ||
-         (player == 0) && (last_pit_index > 5 && last_pit_index <= 11))
+    if (((player == 0) && (last_pit_index >= 6 && last_pit_index <= 11) ||
+         (player == 1) && (last_pit_index >= 0 && last_pit_index < 6))
 
         && (board[last_pit_index] == 2 || board[last_pit_index] == 3))
     {
