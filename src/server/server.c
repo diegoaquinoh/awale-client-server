@@ -15,6 +15,8 @@
 // Structure pour une partie en cours
 typedef struct {
     int client_indices[2];  // Indices des deux joueurs
+    int spectator_indices[MAX_SPECTATORS];  // Indices des spectateurs
+    int num_spectators;
     char board[12];
     char scores[2];
     char current_player;
@@ -73,6 +75,10 @@ static void init_game_state(Game* g) {
     g->scores[0] = 0;
     g->scores[1] = 0;
     g->active = 1;
+    g->num_spectators = 0;
+    for (int i = 0; i < MAX_SPECTATORS; i++) {
+        g->spectator_indices[i] = -1;
+    }
 }
 
 /**
@@ -148,6 +154,14 @@ static void broadcast_game_state(Game* g) {
     
     send_line(clients[c0_idx].socket_fd, line);
     send_line(clients[c1_idx].socket_fd, line);
+    
+    // Envoyer aussi aux spectateurs
+    for (int i = 0; i < g->num_spectators; i++) {
+        int spec_idx = g->spectator_indices[i];
+        if (spec_idx >= 0 && clients[spec_idx].socket_fd > 0) {
+            send_line(clients[spec_idx].socket_fd, line);
+        }
+    }
 }
 
 /**
@@ -165,6 +179,56 @@ static void send_game_state(Game* g, int client_idx) {
     send_line(clients[client_idx].socket_fd, line);
 }
 
+/**
+ * Envoie la liste des parties en cours à un client
+ */
+static void send_games_list(int client_idx) {
+    char msg[1024] = "GAMESLIST";
+    int has_games = 0;
+    
+    for (int i = 0; i < MAX_CLIENTS / 2; i++) {
+        if (games[i].active) {
+            has_games = 1;
+            char game_info[128];
+            snprintf(game_info, sizeof(game_info), " %d:%s_vs_%s", i,
+                     clients[games[i].client_indices[0]].username,
+                     clients[games[i].client_indices[1]].username);
+            strcat(msg, game_info);
+        }
+    }
+    
+    strcat(msg, "\n");
+    send_line(clients[client_idx].socket_fd, msg);
+    
+    if (!has_games) {
+        send_line(clients[client_idx].socket_fd, "MSG Aucune partie en cours.\n");
+    }
+}
+
+/**
+ * Termine une partie et notifie les spectateurs
+ */
+static void end_game(Game* g, const char* end_message) {
+    // Notifier les spectateurs
+    for (int i = 0; i < g->num_spectators; i++) {
+        int spec_idx = g->spectator_indices[i];
+        if (spec_idx >= 0 && clients[spec_idx].socket_fd > 0) {
+            send_line(clients[spec_idx].socket_fd, "MSG La partie que vous regardiez est terminée.\n");
+            send_line(clients[spec_idx].socket_fd, end_message);
+            clients[spec_idx].status = CLIENT_WAITING;
+            clients[spec_idx].watching_game = -1;
+        }
+    }
+    
+    // Réinitialiser les statuts des joueurs
+    clients[g->client_indices[0]].status = CLIENT_WAITING;
+    clients[g->client_indices[1]].status = CLIENT_WAITING;
+    
+    // Désactiver la partie
+    g->active = 0;
+    g->num_spectators = 0;
+}
+
 int main() {
     srand(time(NULL));
     
@@ -174,6 +238,7 @@ int main() {
         clients[i].status = CLIENT_CONNECTED;
         clients[i].opponent_index = -1;
         clients[i].challenged_by = -1;
+        clients[i].watching_game = -1;
     }
     
     for (int i = 0; i < MAX_CLIENTS / 2; i++) {
@@ -299,9 +364,69 @@ int main() {
                 continue;
             }
             
+            // Si le client est spectateur, il ne peut que faire stopwatch
+            if (clients[i].status == CLIENT_SPECTATING) {
+                if (!strcmp(buf, "STOPWATCH")) {
+                    Game* g = &games[clients[i].watching_game];
+                    
+                    // Retirer le spectateur
+                    for (int j = 0; j < g->num_spectators; j++) {
+                        if (g->spectator_indices[j] == i) {
+                            // Décaler les spectateurs suivants
+                            for (int k = j; k < g->num_spectators - 1; k++) {
+                                g->spectator_indices[k] = g->spectator_indices[k + 1];
+                            }
+                            g->num_spectators--;
+                            break;
+                        }
+                    }
+                    
+                    clients[i].status = CLIENT_WAITING;
+                    clients[i].watching_game = -1;
+                    
+                    send_line(clients[i].socket_fd, "MSG Vous avez arrêté de regarder la partie.\n");
+                    printf("%s a arrêté de regarder\n", clients[i].username);
+                } else {
+                    send_line(clients[i].socket_fd, "MSG Vous êtes en mode spectateur. Tapez 'stopwatch' pour quitter.\n");
+                }
+                continue;
+            }
+            
             // Commande LIST - Demander la liste des utilisateurs
             if (!strcmp(buf, "LIST")) {
                 send_online_users(i);
+            }
+            // Commande GAMES - Demander la liste des parties en cours
+            else if (!strcmp(buf, "GAMES")) {
+                send_games_list(i);
+            }
+            // Commande WATCH - Regarder une partie
+            else if (!strncmp(buf, "WATCH ", 6)) {
+                int game_id = atoi(buf + 6);
+                
+                if (game_id < 0 || game_id >= MAX_CLIENTS / 2 || !games[game_id].active) {
+                    send_line(clients[i].socket_fd, "MSG Partie introuvable.\n");
+                } else if (games[game_id].num_spectators >= MAX_SPECTATORS) {
+                    send_line(clients[i].socket_fd, "MSG Partie pleine (trop de spectateurs).\n");
+                } else {
+                    // Ajouter le spectateur
+                    games[game_id].spectator_indices[games[game_id].num_spectators] = i;
+                    games[game_id].num_spectators++;
+                    
+                    clients[i].status = CLIENT_SPECTATING;
+                    clients[i].watching_game = game_id;
+                    
+                    char msg[200];
+                    snprintf(msg, sizeof(msg), "MSG Vous regardez la partie entre %s et %s.\n",
+                             clients[games[game_id].client_indices[0]].username,
+                             clients[games[game_id].client_indices[1]].username);
+                    send_line(clients[i].socket_fd, msg);
+                    
+                    // Envoyer l'état actuel de la partie
+                    send_game_state(&games[game_id], i);
+                    
+                    printf("%s regarde la partie %d\n", clients[i].username, game_id);
+                }
             }
             // Commande CHALLENGE - Défier un autre joueur
             else if (!strncmp(buf, "CHALLENGE ", 10)) {
@@ -443,10 +568,10 @@ int main() {
                     send_line(clients[i].socket_fd, "MSG Vous avez abandonné.\n");
                     send_line(clients[i].socket_fd, "END forfeit\n");
                     
-                    // Réinitialiser les statuts
-                    clients[g->client_indices[0]].status = CLIENT_WAITING;
-                    clients[g->client_indices[1]].status = CLIENT_WAITING;
-                    g->active = 0;
+                    // Terminer la partie
+                    char end_msg[64];
+                    snprintf(end_msg, sizeof(end_msg), "END winner %d\n", winner);
+                    end_game(g, end_msg);
                     
                     printf("%s a abandonné contre %s\n", clients[i].username, clients[opponent_idx].username);
                     continue;
@@ -476,11 +601,19 @@ int main() {
                     // Mettre à jour l'état du jeu
                     memcpy(g->board, board, 12);
                     
-                    // Informer l'adversaire
+                    // Informer l'adversaire et les spectateurs
                     char notify[128];
                     snprintf(notify, sizeof(notify), "MSG %s a déplacé les graines de la case %d.\n", 
                              clients[i].username, pit);
                     send_line(clients[opponent_idx].socket_fd, notify);
+                    
+                    // Envoyer aussi aux spectateurs
+                    for (int j = 0; j < g->num_spectators; j++) {
+                        int spec_idx = g->spectator_indices[j];
+                        if (spec_idx >= 0 && clients[spec_idx].socket_fd > 0) {
+                            send_line(clients[spec_idx].socket_fd, notify);
+                        }
+                    }
                     
                     // Capturer les graines
                     char gained = collect_seeds((char)player_id, (char)last);
@@ -496,21 +629,20 @@ int main() {
                         memcpy(g->board, board, 12);
                         broadcast_game_state(g);
                         
+                        char end_msg[32];
                         if (g->scores[0] == g->scores[1]) {
                             send_line(clients[g->client_indices[0]].socket_fd, "END draw\n");
                             send_line(clients[g->client_indices[1]].socket_fd, "END draw\n");
+                            strcpy(end_msg, "END draw\n");
                         } else {
                             int w = (g->scores[0] > g->scores[1]) ? 0 : 1;
-                            char msg[32];
-                            snprintf(msg, sizeof(msg), "END winner %d\n", w);
-                            send_line(clients[g->client_indices[0]].socket_fd, msg);
-                            send_line(clients[g->client_indices[1]].socket_fd, msg);
+                            snprintf(end_msg, sizeof(end_msg), "END winner %d\n", w);
+                            send_line(clients[g->client_indices[0]].socket_fd, end_msg);
+                            send_line(clients[g->client_indices[1]].socket_fd, end_msg);
                         }
                         
-                        // Réinitialiser les statuts
-                        clients[g->client_indices[0]].status = CLIENT_WAITING;
-                        clients[g->client_indices[1]].status = CLIENT_WAITING;
-                        g->active = 0;
+                        // Terminer la partie
+                        end_game(g, end_msg);
                         continue;
                     }
                     
@@ -534,9 +666,8 @@ int main() {
                             send_line(clients[g->client_indices[0]].socket_fd, "END draw\n");
                             send_line(clients[g->client_indices[1]].socket_fd, "END draw\n");
                             
-                            clients[g->client_indices[0]].status = CLIENT_WAITING;
-                            clients[g->client_indices[1]].status = CLIENT_WAITING;
-                            g->active = 0;
+                            // Terminer la partie
+                            end_game(g, "END draw\n");
                         } else {
                             send_line(clients[i].socket_fd, "MSG Égalité refusée.\n");
                             send_line(clients[opponent_idx].socket_fd, "MSG Égalité refusée par l'adversaire.\n");

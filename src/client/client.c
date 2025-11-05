@@ -111,6 +111,9 @@ int main(int argc, char **argv) {
     printf("Connexion au serveur...\n");
     printf("\nCommandes disponibles:\n");
     printf("  list              - Voir les joueurs disponibles\n");
+    printf("  games             - Voir les parties en cours\n");
+    printf("  watch <id>        - Regarder une partie\n");
+    printf("  stopwatch         - Arrêter de regarder\n");
     printf("  challenge <nom>   - Défier un joueur\n");
     printf("  accept <nom>      - Accepter un défi\n");
     printf("  refuse <nom>      - Refuser un défi\n");
@@ -157,6 +160,35 @@ int main(int argc, char **argv) {
                     printf("  Aucun joueur disponible.\n");
                 }
                 printf("===========================\n\n");
+                
+                if (!in_game) {
+                    printf("> ");
+                    fflush(stdout);
+                }
+            }
+            // Liste des parties
+            else if (!strncmp(buf, "GAMESLIST", 9)) {
+                printf("\n=== Parties en cours ===\n");
+                if (strlen(buf) > 10) {
+                    char* token = strtok(buf + 10, " ");
+                    while (token != NULL) {
+                        // Format: id:player1_vs_player2
+                        char* colon = strchr(token, ':');
+                        if (colon) {
+                            *colon = '\0';
+                            char* game_info = colon + 1;
+                            // Remplacer les _ par des espaces pour l'affichage
+                            for (char* p = game_info; *p; p++) {
+                                if (*p == '_') *p = ' ';
+                            }
+                            printf("  [%s] %s\n", token, game_info);
+                        }
+                        token = strtok(NULL, " ");
+                    }
+                } else {
+                    printf("  Aucune partie en cours.\n");
+                }
+                printf("========================\n\n");
                 
                 if (!in_game) {
                     printf("> ");
@@ -271,6 +303,14 @@ int main(int argc, char **argv) {
                 // Hors partie, commandes de lobby
                 if (!strcmp(buf, "list")) {
                     send(fd, "LIST\n", 5, 0);
+                } else if (!strcmp(buf, "games")) {
+                    send(fd, "GAMES\n", 6, 0);
+                } else if (!strcmp(buf, "stopwatch")) {
+                    send(fd, "STOPWATCH\n", 10, 0);
+                } else if (!strncmp(buf, "watch ", 6)) {
+                    char out[128];
+                    snprintf(out, sizeof(out), "WATCH %s\n", buf + 6);
+                    send(fd, out, strlen(out), 0);
                 } else if (!strncmp(buf, "challenge ", 10)) {
                     char out[128];
                     snprintf(out, sizeof(out), "CHALLENGE %s\n", buf + 10);
