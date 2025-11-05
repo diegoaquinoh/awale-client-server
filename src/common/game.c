@@ -7,7 +7,6 @@ char board[12];
 char scores[2];
 char current_player;
 char game_over = 0;
-char collected = 0;
 
 
 enum {PROPOSITION_DRAW = -1};
@@ -94,11 +93,11 @@ char collect_seeds(char player, char last_pit_index)
 
         && (board[last_pit_index] == 2 || board[last_pit_index] == 3))
     {
-        char collected = board[last_pit_index];
+        char collected_seeds = board[last_pit_index];
         board[last_pit_index] = 0;
-        return collected + collect_seeds(player, (last_pit_index - 1 + 12) % 12);
+        return collected_seeds + collect_seeds(player, (last_pit_index - 1 + 12) % 12);
     }
-    return collected;
+    return 0;
 }
 
 char move(char player)
@@ -215,7 +214,7 @@ void declare_winner(char continued)
     printf("Player 1: %d\n", scores[0]);
     printf("Player 2: %d\n", scores[1]);
 
-    if (!continued)
+    if (continued == DRAW)
     {
         printf("The game ended in a draw by agreement.\n");
         return;
@@ -237,7 +236,7 @@ void declare_winner(char continued)
 char proposition_draw(char player)
 {
     char response;
-    printf("Player %d : Player %d proposes a draw. Do you accept? (1 for Yes, 0 for No): ", player, 1-player);
+    printf("Player %d proposes a draw to Player %d. Do you accept? (1 for Yes, 0 for No): ", player + 1, 2 - player);
     scanf(" %c", &response);
     return response == '1';
 }
