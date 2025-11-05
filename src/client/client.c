@@ -90,6 +90,23 @@ int main(int argc, char **argv) {
     char buf[256];
     int myrole = -1;
     int myturn = 0;
+    char username[50];
+    
+    // Demander le username à l'utilisateur
+    printf("Entrez votre nom d'utilisateur: ");
+    if (!fgets(username, sizeof(username), stdin)) {
+        fprintf(stderr, "Erreur de lecture du username\n");
+        close(fd);
+        return 1;
+    }
+    
+    // Supprimer le '\n' à la fin
+    size_t len = strlen(username);
+    if (len > 0 && username[len - 1] == '\n') {
+        username[len - 1] = '\0';
+    }
+    
+    printf("Connexion au serveur...\n");
     
     while (1) {
         if (recv_line(fd, buf, sizeof(buf)) < 0) {
@@ -97,7 +114,13 @@ int main(int argc, char **argv) {
             break;
         }
         
-        if (!strncmp(buf, "ROLE ", 5)) {
+        // Gérer la demande d'enregistrement
+        if (!strncmp(buf, "REGISTER", 8)) {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "USERNAME %s\n", username);
+            send(fd, msg, strlen(msg), 0);
+        }
+        else if (!strncmp(buf, "ROLE ", 5)) {
             myrole = atoi(buf + 5);
             printf("Vous êtes P%d.\n", myrole + 1);
         }

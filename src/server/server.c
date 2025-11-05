@@ -86,23 +86,58 @@ int main() {
     }
     
     printf("Server on %d\n", PORT);
-    // Acceptation des connexions des deux clients
-    int cfd[2];
+    
+    // Acceptation des connexions et enregistrement des clients
+    Client clients[2];
+    
     for (int i = 0; i < 2; i++) {
-        cfd[i] = accept(srv, NULL, NULL);
-        if (cfd[i] < 0) {
+        clients[i].socket_fd = accept(srv, NULL, NULL);
+        if (clients[i].socket_fd < 0) {
             perror("accept");
             return 1;
         }
+        clients[i].player_id = i;
+        
+        // Demander le username au client
+        send_line(clients[i].socket_fd, "REGISTER\n");
+        
+        char buf[128];
+        if (recv_line(clients[i].socket_fd, buf, sizeof(buf)) < 0) {
+            perror("recv username");
+            return 1;
+        }
+        
+        // Extraire le username (format: "USERNAME <name>")
+        if (strncmp(buf, "USERNAME ", 9) == 0) {
+            strncpy(clients[i].username, buf + 9, MAX_USERNAME_LEN - 1);
+            clients[i].username[MAX_USERNAME_LEN - 1] = '\0';
+        } else {
+            strcpy(clients[i].username, "Anonymous");
+        }
+        
+        printf("Client %d enregistré: %s\n", i + 1, clients[i].username);
+        
+        // Confirmation au client
+        char welcome[128];
+        snprintf(welcome, sizeof(welcome), "MSG Bienvenue %s!\n", clients[i].username);
+        send_line(clients[i].socket_fd, welcome);
     }
+    
+    int cfd[2];
+    cfd[0] = clients[0].socket_fd;
+    cfd[1] = clients[1].socket_fd;
     
     // Attribution des rôles aux clients
     send_line(cfd[0], "ROLE 0\n");
     send_line(cfd[1], "ROLE 1\n");
     
-    // Messages d'information aux joueurs
-    send_line(cfd[0], "MSG Vous êtes P1 (pits 0..5)\n");
-    send_line(cfd[1], "MSG Vous êtes P2 (pits 6..11)\n");
+    // Messages d'information aux joueurs avec les usernames
+    char msg[128];
+    snprintf(msg, sizeof(msg), "MSG Vous êtes P1 (pits 0..5). Votre adversaire est %s\n", clients[1].username);
+    send_line(cfd[0], msg);
+    
+    snprintf(msg, sizeof(msg), "MSG Vous êtes P2 (pits 6..11). Votre adversaire est %s\n", clients[0].username);
+    send_line(cfd[1], msg);
     
     // Initialisation du jeu et envoi de l'état initial
     init_game();
@@ -146,9 +181,10 @@ int main() {
                     continue;
                 }
                 
-                // Informer l'adversaire du coup joué
+                // Informer l'adversaire du coup joué avec le username
                 char notify[128];
-                snprintf(notify, sizeof(notify), "MSG Le joueur %d a déplacé les graines de la case %d.\n", p + 1, pit);
+                snprintf(notify, sizeof(notify), "MSG %s a déplacé les graines de la case %d.\n", 
+                         clients[p].username, pit);
                 send_line(cfd[other], notify);
                 
                 char gained = collect_seeds((char)p, (char)last);
