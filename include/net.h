@@ -19,6 +19,7 @@ typedef struct {
     int player_id;
     ClientStatus status;
     int opponent_index;  // Index de l'adversaire dans le tableau des clients
+    int challenged_by;   // Index du client qui a envoyé un défi (-1 si aucun), pour eviter d'accepter des defis inexistant
 } Client;
 
 int apply_move_from_pit(int player, int pit_index);

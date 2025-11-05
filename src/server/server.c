@@ -92,7 +92,7 @@ static int find_client_by_socket(int fd) {
  */
 static int find_client_by_username(const char* username) {
     for (int i = 0; i < num_clients; i++) {
-        if (strcmp(clients[i].username, username) == 0) {
+        if (clients[i].socket_fd > 0 && strcmp(clients[i].username, username) == 0) {
             return i;
         }
     }
@@ -106,7 +106,9 @@ static void send_online_users(int client_idx) {
     char msg[1024] = "USERLIST";
     
     for (int i = 0; i < num_clients; i++) {
-        if (i != client_idx && clients[i].status != CLIENT_IN_GAME) {
+        if (i != client_idx && 
+            clients[i].socket_fd > 0 && 
+            clients[i].status != CLIENT_IN_GAME) {
             strcat(msg, " ");
             strcat(msg, clients[i].username);
         }
@@ -156,6 +158,7 @@ int main() {
         clients[i].socket_fd = -1;
         clients[i].status = CLIENT_CONNECTED;
         clients[i].opponent_index = -1;
+        clients[i].challenged_by = -1;
     }
     
     for (int i = 0; i < MAX_CLIENTS / 2; i++) {
@@ -213,6 +216,7 @@ int main() {
                     clients[num_clients].socket_fd = new_fd;
                     clients[num_clients].status = CLIENT_CONNECTED;
                     clients[num_clients].opponent_index = -1;
+                    clients[num_clients].challenged_by = -1;
                     
                     // Demander le username
                     send_line(new_fd, "REGISTER\n");
@@ -271,6 +275,9 @@ int main() {
                 } else if (clients[target_idx].status == CLIENT_IN_GAME) {
                     send_line(clients[i].socket_fd, "MSG Ce joueur est déjà en partie.\n");
                 } else {
+                    // Enregistrer le défi
+                    clients[target_idx].challenged_by = i;
+                    
                     // Envoyer le défi
                     char challenge_msg[128];
                     snprintf(challenge_msg, sizeof(challenge_msg), "CHALLENGED_BY %s\n", clients[i].username);
@@ -289,6 +296,9 @@ int main() {
                 
                 if (challenger_idx == -1) {
                     send_line(clients[i].socket_fd, "MSG Joueur introuvable.\n");
+                } else if (clients[i].challenged_by != challenger_idx) {
+                    // Vérifier que ce joueur a bien envoyé un défi
+                    send_line(clients[i].socket_fd, "MSG Ce joueur ne vous a pas défié.\n");
                 } else {
                     // Créer une nouvelle partie
                     int game_idx = -1;
@@ -323,6 +333,7 @@ int main() {
                     clients[challenger_idx].opponent_index = i;
                     clients[i].status = CLIENT_IN_GAME;
                     clients[i].opponent_index = challenger_idx;
+                    clients[i].challenged_by = -1;  // Réinitialiser le défi
                     
                     // Attribuer les rôles
                     clients[games[game_idx].client_indices[0]].player_id = 0;
@@ -353,13 +364,18 @@ int main() {
                 
                 int challenger_idx = find_client_by_username(challenger);
                 
-                if (challenger_idx != -1) {
+                if (challenger_idx == -1) {
+                    send_line(clients[i].socket_fd, "MSG Joueur introuvable.\n");
+                } else if (clients[i].challenged_by != challenger_idx) {
+                    send_line(clients[i].socket_fd, "MSG Ce joueur ne vous a pas défié.\n");
+                } else {
                     char msg[128];
                     snprintf(msg, sizeof(msg), "MSG %s a refusé votre défi.\n", clients[i].username);
                     send_line(clients[challenger_idx].socket_fd, msg);
+                    
+                    clients[i].challenged_by = -1;  // Réinitialiser le défi
+                    send_line(clients[i].socket_fd, "MSG Défi refusé.\n");
                 }
-                
-                send_line(clients[i].socket_fd, "MSG Défi refusé.\n");
             }
             // Commandes de jeu (MOVE, DRAW) pour les clients en partie
             else if (clients[i].status == CLIENT_IN_GAME) {

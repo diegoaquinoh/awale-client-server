@@ -249,7 +249,7 @@ int main(int argc, char **argv) {
                 if (buf[0] == 'd' || buf[0] == 'D') {
                     send(fd, "DRAW\n", 5, 0);
                 } else {
-                    char out[64];
+                    char out[300];
                     snprintf(out, sizeof(out), "MOVE %s\n", buf);
                     send(fd, out, strlen(out), 0);
                 }
