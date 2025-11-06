@@ -336,7 +336,7 @@ int main() {
                             printf("Client connecté: %s\n", clients[num_clients].username);
                             
                             char welcome[128];
-                            snprintf(welcome, sizeof(welcome), "MSG Bienvenue %s! Tapez 'list' pour voir les joueurs disponibles.\n", clients[num_clients].username);
+                            snprintf(welcome, sizeof(welcome), "MSG Bienvenue %s! Tapez '/list' pour voir les joueurs disponibles.\n", clients[num_clients].username);
                             send_line(new_fd, welcome);
                             
                             clients[num_clients].status = CLIENT_WAITING;
@@ -359,12 +359,66 @@ int main() {
             if (recv_line(clients[i].socket_fd, buf, sizeof(buf)) <= 0) {
                 // Déconnexion
                 printf("Client déconnecté: %s\n", clients[i].username);
+                
+                // Si le client était en partie, l'adversaire gagne automatiquement
+                if (clients[i].status == CLIENT_IN_GAME) {
+                    Game* g = find_game_for_client(i);
+                    if (g) {
+                        int opponent_idx = clients[i].opponent_index;
+                        if (opponent_idx >= 0 && clients[opponent_idx].socket_fd > 0) {
+                            char end_msg[200];
+                            snprintf(end_msg, sizeof(end_msg), 
+                                    "END %s s'est déconnecté. Vous gagnez par forfait!\n",
+                                    clients[i].username);
+                            send_line(clients[opponent_idx].socket_fd, end_msg);
+                            clients[opponent_idx].status = CLIENT_WAITING;
+                            clients[opponent_idx].opponent_index = -1;
+                        }
+                        
+                        // Notifier les spectateurs
+                        char spec_msg[200];
+                        snprintf(spec_msg, sizeof(spec_msg), 
+                                "END %s s'est déconnecté. %s gagne par forfait!\n",
+                                clients[i].username, 
+                                opponent_idx >= 0 ? clients[opponent_idx].username : "Adversaire");
+                        for (int j = 0; j < g->num_spectators; j++) {
+                            int spec_idx = g->spectator_indices[j];
+                            if (spec_idx >= 0 && clients[spec_idx].socket_fd > 0) {
+                                send_line(clients[spec_idx].socket_fd, spec_msg);
+                                clients[spec_idx].status = CLIENT_WAITING;
+                                clients[spec_idx].watching_game = -1;
+                            }
+                        }
+                        
+                        // Désactiver la partie
+                        g->active = 0;
+                        g->num_spectators = 0;
+                    }
+                }
+                // Si le client était spectateur, le retirer de la liste
+                else if (clients[i].status == CLIENT_SPECTATING) {
+                    Game* g = &games[clients[i].watching_game];
+                    for (int j = 0; j < g->num_spectators; j++) {
+                        if (g->spectator_indices[j] == i) {
+                            for (int k = j; k < g->num_spectators - 1; k++) {
+                                g->spectator_indices[k] = g->spectator_indices[k + 1];
+                            }
+                            g->num_spectators--;
+                            break;
+                        }
+                    }
+                }
+                
                 close(clients[i].socket_fd);
                 clients[i].socket_fd = -1;
+                clients[i].status = CLIENT_WAITING;
+                clients[i].opponent_index = -1;
+                clients[i].challenged_by = -1;
+                clients[i].watching_game = -1;
                 continue;
             }
             
-            // Si le client est spectateur, il ne peut que faire stopwatch
+            // Si le client est spectateur, il ne peut que faire stopwatch ou CHAT
             if (clients[i].status == CLIENT_SPECTATING) {
                 if (!strcmp(buf, "STOPWATCH")) {
                     Game* g = &games[clients[i].watching_game];
@@ -386,8 +440,31 @@ int main() {
                     
                     send_line(clients[i].socket_fd, "MSG Vous avez arrêté de regarder la partie.\n");
                     printf("%s a arrêté de regarder\n", clients[i].username);
+                } else if (!strncmp(buf, "CHAT ", 5)) {
+                    // Les spectateurs peuvent envoyer des messages dans le chat de la partie
+                    char* message = buf + 5;
+                    Game* g = &games[clients[i].watching_game];
+                    char chat_msg[512];
+                    snprintf(chat_msg, sizeof(chat_msg), "CHAT [Spectateur %s]: %s\n", 
+                             clients[i].username, message);
+                    
+                    // Envoyer aux joueurs
+                    for (int j = 0; j < 2; j++) {
+                        int player_idx = g->client_indices[j];
+                        if (player_idx >= 0 && clients[player_idx].socket_fd > 0) {
+                            send_line(clients[player_idx].socket_fd, chat_msg);
+                        }
+                    }
+                    
+                    // Envoyer aux autres spectateurs (SAUF l'expéditeur)
+                    for (int j = 0; j < g->num_spectators; j++) {
+                        int spec_idx = g->spectator_indices[j];
+                        if (spec_idx >= 0 && spec_idx != i && clients[spec_idx].socket_fd > 0) {
+                            send_line(clients[spec_idx].socket_fd, chat_msg);
+                        }
+                    }
                 } else {
-                    send_line(clients[i].socket_fd, "MSG Vous êtes en mode spectateur. Tapez 'stopwatch' pour quitter.\n");
+                    send_line(clients[i].socket_fd, "MSG Vous êtes en mode spectateur. Tapez '/stopwatch' pour quitter ou envoyez un message.\n");
                 }
                 continue;
             }
@@ -399,6 +476,20 @@ int main() {
             // Commande GAMES - Demander la liste des parties en cours
             else if (!strcmp(buf, "GAMES")) {
                 send_games_list(i);
+            }
+            // Commande BOARD - Afficher le plateau (pour joueur ou spectateur en partie)
+            else if (!strcmp(buf, "BOARD")) {
+                if (clients[i].status == CLIENT_IN_GAME) {
+                    Game* g = find_game_for_client(i);
+                    if (g) {
+                        send_game_state(g, i);
+                    }
+                } else if (clients[i].status == CLIENT_SPECTATING) {
+                    Game* g = &games[clients[i].watching_game];
+                    send_game_state(g, i);
+                } else {
+                    send_line(clients[i].socket_fd, "MSG Vous n'êtes pas en partie.\n");
+                }
             }
             // Commande WATCH - Regarder une partie
             else if (!strncmp(buf, "WATCH ", 6)) {
@@ -448,16 +539,13 @@ int main() {
                         } else if (target_idx == i) {
                             send_line(clients[i].socket_fd, "MSG Vous ne pouvez pas vous envoyer un message à vous-même.\n");
                         } else {
-                            // Envoyer le message privé
+                            // Envoyer le message privé au destinataire
                             char chat_msg[512];
                             snprintf(chat_msg, sizeof(chat_msg), "CHAT [Privé de %s]: %s\n", 
                                      clients[i].username, msg_content);
                             send_line(clients[target_idx].socket_fd, chat_msg);
                             
-                            // Confirmation à l'expéditeur
-                            snprintf(chat_msg, sizeof(chat_msg), "CHAT [À %s]: %s\n", 
-                                     target_username, msg_content);
-                            send_line(clients[i].socket_fd, chat_msg);
+                            // NE PAS envoyer de confirmation à l'expéditeur (éviter duplication)
                         }
                     } else {
                         send_line(clients[i].socket_fd, "MSG Format invalide. Utilisez: chat @username message\n");
@@ -486,9 +574,6 @@ int main() {
                                     send_line(clients[spec_idx].socket_fd, chat_msg);
                                 }
                             }
-                            
-                            // Echo à l'expéditeur
-                            send_line(clients[i].socket_fd, chat_msg);
                         }
                     } else if (clients[i].status == CLIENT_SPECTATING) {
                         // En tant que spectateur : envoyer aux joueurs et autres spectateurs
@@ -504,20 +589,20 @@ int main() {
                             }
                         }
                         
-                        // Envoyer aux autres spectateurs
+                        // Envoyer aux autres spectateurs (SAUF l'expéditeur)
                         for (int j = 0; j < g->num_spectators; j++) {
                             int spec_idx = g->spectator_indices[j];
-                            if (spec_idx >= 0 && clients[spec_idx].socket_fd > 0) {
+                            if (spec_idx >= 0 && spec_idx != i && clients[spec_idx].socket_fd > 0) {
                                 send_line(clients[spec_idx].socket_fd, chat_msg);
                             }
                         }
                     } else {
-                        // Hors partie : broadcast à tous les joueurs en ligne
+                        // Hors partie : broadcast à tous les joueurs en ligne (SAUF l'expéditeur)
                         snprintf(chat_msg, sizeof(chat_msg), "CHAT [Global - %s]: %s\n", 
                                  clients[i].username, message);
                         
                         for (int j = 0; j < num_clients; j++) {
-                            if (clients[j].socket_fd > 0 && clients[j].status == CLIENT_WAITING) {
+                            if (j != i && clients[j].socket_fd > 0 && clients[j].status == CLIENT_WAITING) {
                                 send_line(clients[j].socket_fd, chat_msg);
                             }
                         }

@@ -38,28 +38,46 @@ Le client se connecte au serveur (localhost:4321) et vous demande votre nom d'ut
 
 ## Commandes disponibles
 
+### Syntaxe générale
+
+**Par défaut, tout ce que vous tapez est envoyé comme message de chat.**  
+Pour exécuter une commande, préfixez-la avec `/`  
+Pour un message privé, préfixez avec `@username`
+
+### Commandes globales
+
+- `/help` : Afficher la liste des commandes
+- `/list` : Afficher la liste des joueurs disponibles
+- `/games` : Afficher la liste des parties en cours
+- `/board` : Afficher le plateau (en partie ou spectateur)
+
 ### Dans le lobby (hors partie)
 
-- `list` : Afficher la liste des joueurs disponibles
-- `games` : Afficher la liste des parties en cours
-- `challenge <username>` : Défier un joueur
-- `accept <username>` : Accepter un défi
-- `refuse <username>` : Refuser un défi
-- `watch <game_id>` : Regarder une partie en cours (mode spectateur)
-- `chat <message>` : Envoyer un message à tous les joueurs en ligne
-- `chat @<username> <message>` : Envoyer un message privé à un joueur
+- `/challenge <username>` : Défier un joueur
+- `/accept <username>` : Accepter un défi
+- `/refuse <username>` : Refuser un défi
+- `/watch <game_id>` : Regarder une partie en cours (mode spectateur)
+- `@<username> <message>` : Message privé
+- `<message>` : Envoyer un message à tous les joueurs en ligne
 
 ### En partie
 
-- `<0-5>` : Jouer un coup (numéro du pit)
-- `d` : Proposer l'égalité
-- `q` : Abandonner
-- `chat <message>` : Envoyer un message à l'adversaire et aux spectateurs
+- `/0` à `/11` : Jouer un coup (numéro du pit de 0 à 11)
+- `/d` : Proposer l'égalité
+- `/q` : Abandonner (forfait)
+- `/board` : Réafficher le plateau
+- `@<username> <message>` : Message privé
+- `<message>` : Envoyer un message à l'adversaire et aux spectateurs
 
 ### En mode spectateur
 
-- `stopwatch` : Quitter le mode spectateur
-- `chat <message>` : Envoyer un message aux joueurs et spectateurs de la partie
+- `/stopwatch` : Quitter le mode spectateur
+- `/board` : Réafficher le plateau
+- `<message>` : Envoyer un message aux joueurs et spectateurs de la partie
+
+### Déconnexion
+
+Si un joueur se déconnecte pendant une partie (Ctrl+C, fermeture, etc.), il perd automatiquement et son adversaire gagne par forfait. Les spectateurs sont notifiés.
 
 ## Règles du jeu Awale
 
