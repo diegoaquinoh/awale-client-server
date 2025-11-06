@@ -29,6 +29,32 @@ Game games[MAX_CLIENTS / 2];
 int num_clients = 0;
 
 /**
+ * Valider un nom d'utilisateur
+ * Doit avoir au moins 2 caractères et seulement des lettres, chiffres, _ ou -
+ */
+static int is_valid_username(const char* username) {
+    if (!username || strlen(username) < 2) {
+        return 0;  // Trop court
+    }
+    
+    if (strlen(username) >= MAX_USERNAME_LEN) {
+        return 0;  // Trop long
+    }
+    
+    // Vérifier que tous les caractères sont alphanumériques, _ ou -
+    for (const char* p = username; *p; p++) {
+        if (!((*p >= 'a' && *p <= 'z') || 
+              (*p >= 'A' && *p <= 'Z') || 
+              (*p >= '0' && *p <= '9') || 
+              *p == '_' || *p == '-')) {
+            return 0;  // Caractère invalide
+        }
+    }
+    
+    return 1;  // Valide
+}
+
+/**
  * Reçoit une ligne depuis un socket
  * @param fd Socket file descriptor
  * @param buf Buffer pour stocker la ligne
@@ -310,6 +336,14 @@ int main() {
                             strncpy(username, buf + 9, MAX_USERNAME_LEN - 1);
                             username[MAX_USERNAME_LEN - 1] = '\0';
                             
+                            // Valider le format du username
+                            if (!is_valid_username(username)) {
+                                send_line(new_fd, "MSG Username invalide. Il doit contenir au moins 2 caractères alphanumériques, _ ou -. Déconnexion.\n");
+                                close(new_fd);
+                                printf("Connexion refusée: username '%s' invalide (format)\n", username);
+                                continue;
+                            }
+                            
                             // Vérifier si le username est déjà pris
                             int username_taken = 0;
                             for (int j = 0; j < num_clients; j++) {
@@ -472,10 +506,12 @@ int main() {
             // Commande LIST - Demander la liste des utilisateurs
             if (!strcmp(buf, "LIST")) {
                 send_online_users(i);
+                printf("[%s] a demandé la liste des joueurs\n", clients[i].username);
             }
             // Commande GAMES - Demander la liste des parties en cours
             else if (!strcmp(buf, "GAMES")) {
                 send_games_list(i);
+                printf("[%s] a demandé la liste des parties\n", clients[i].username);
             }
             // Commande BOARD - Afficher le plateau (pour joueur ou spectateur en partie)
             else if (!strcmp(buf, "BOARD")) {
@@ -483,10 +519,12 @@ int main() {
                     Game* g = find_game_for_client(i);
                     if (g) {
                         send_game_state(g, i);
+                        printf("[%s] a demandé le plateau (en partie)\n", clients[i].username);
                     }
                 } else if (clients[i].status == CLIENT_SPECTATING) {
                     Game* g = &games[clients[i].watching_game];
                     send_game_state(g, i);
+                    printf("[%s] a demandé le plateau (spectateur)\n", clients[i].username);
                 } else {
                     send_line(clients[i].socket_fd, "MSG Vous n'êtes pas en partie.\n");
                 }
@@ -633,6 +671,7 @@ int main() {
                     send_line(clients[target_idx].socket_fd, challenge_msg);
                     
                     send_line(clients[i].socket_fd, "MSG Défi envoyé. En attente de réponse...\n");
+                    printf("[%s] a défié [%s]\n", clients[i].username, target);
                 }
             }
             // Commande ACCEPT - Accepter un défi
@@ -703,6 +742,12 @@ int main() {
                     
                     // Envoyer l'état initial
                     broadcast_game_state(&games[game_idx]);
+                    
+                    printf("[%s] a accepté le défi de [%s] - Partie %d commencée (P1: %s, P2: %s)\n",
+                           clients[i].username, challenger,
+                           game_idx,
+                           clients[games[game_idx].client_indices[0]].username,
+                           clients[games[game_idx].client_indices[1]].username);
                 }
             }
             // Commande REFUSE - Refuser un défi
@@ -724,6 +769,8 @@ int main() {
                     
                     clients[i].challenged_by = -1;  // Réinitialiser le défi
                     send_line(clients[i].socket_fd, "MSG Défi refusé.\n");
+                    
+                    printf("[%s] a refusé le défi de [%s]\n", clients[i].username, challenger);
                 }
             }
             // Commandes de jeu (MOVE, DRAW) pour les clients en partie
@@ -767,6 +814,8 @@ int main() {
                 // Traitement d'un coup
                 if (!strncmp(buf, "MOVE ", 5)) {
                     int pit = atoi(buf + 5);
+                    
+                    printf("[%s] joue le pit %d\n", clients[i].username, pit);
                     
                     // Copier l'état du jeu dans les variables globales
                     memcpy(board, g->board, 12);
@@ -833,6 +882,9 @@ int main() {
                 }
                 // Traitement d'une demande d'égalité
                 else if (!strcmp(buf, "DRAW")) {
+                    printf("[%s] propose l'égalité à [%s]\n", 
+                           clients[i].username, clients[opponent_idx].username);
+                    
                     send_line(clients[opponent_idx].socket_fd, "ASKDRAW\n");
                     
                     char ans[16];
@@ -847,12 +899,19 @@ int main() {
                             send_line(clients[g->client_indices[0]].socket_fd, "END draw\n");
                             send_line(clients[g->client_indices[1]].socket_fd, "END draw\n");
                             
+                            printf("Égalité acceptée entre [%s] et [%s]\n",
+                                   clients[g->client_indices[0]].username,
+                                   clients[g->client_indices[1]].username);
+                            
                             // Terminer la partie
                             end_game(g, "END draw\n");
                         } else {
                             send_line(clients[i].socket_fd, "MSG Égalité refusée.\n");
                             send_line(clients[opponent_idx].socket_fd, "MSG Égalité refusée par l'adversaire.\n");
                             broadcast_game_state(g);
+                            
+                            printf("[%s] a refusé l'égalité proposée par [%s]\n",
+                                   clients[opponent_idx].username, clients[i].username);
                         }
                     }
                 }
