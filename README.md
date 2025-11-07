@@ -50,6 +50,8 @@ Pour un message privé, préfixez avec `@username`
 - `/list` : Afficher la liste des joueurs disponibles
 - `/games` : Afficher la liste des parties en cours
 - `/board` : Afficher le plateau (en partie ou spectateur)
+- `/bio` : Définir votre bio (jusqu'à 10 lignes ASCII)
+- `/whois <username>` : Afficher la bio d'un joueur
 
 ### Dans le lobby (hors partie)
 

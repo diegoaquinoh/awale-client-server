@@ -18,6 +18,8 @@ static void print_help(void) {
     printf("║ /accept <nom>      - Accepter défi     ║\n");
     printf("║ /refuse <nom>      - Refuser défi      ║\n");
     printf("║ /board             - Afficher plateau  ║\n");
+    printf("║ /bio               - Définir votre bio ║\n");
+    printf("║ /whois <nom>       - Voir bio joueur   ║\n");
     printf("║ /help              - Cette aide        ║\n");
     printf("╠════════════════════════════════════════╣\n");
     printf("║ En partie:                             ║\n");
@@ -116,6 +118,7 @@ int main(int argc, char **argv) {
     int myrole = -1;
     int myturn = 0;
     int in_game = 0;
+    int editing_bio = 0;  // Flag pour savoir si on est en mode édition de bio
     char username[50];
     
     // Demander le username à l'utilisateur
@@ -258,20 +261,64 @@ int main(int argc, char **argv) {
                 }
             }
             else if (!strncmp(buf, "MSG ", 4)) {
-                puts(buf + 4);
-                
-                if (myturn && strstr(buf + 4, "invalide")) {
-                    printf("Votre tour (/0-11, /d, /q ou message): ");
+                // Détecter le début/continuation de l'édition de bio (Ligne X:)
+                if (strstr(buf + 4, "Ligne ") && strstr(buf + 4, ":")) {
+                    editing_bio = 1;
+                    // Afficher sans le saut de ligne final pour que l'utilisateur tape sur la même ligne
+                    char msg_copy[256];
+                    strncpy(msg_copy, buf + 4, sizeof(msg_copy) - 1);
+                    msg_copy[sizeof(msg_copy) - 1] = '\0';
+                    // Enlever le \n à la fin s'il existe
+                    size_t len = strlen(msg_copy);
+                    if (len > 0 && msg_copy[len - 1] == '\n') {
+                        msg_copy[len - 1] = '\0';
+                    }
+                    printf("%s", msg_copy);
                     fflush(stdout);
-                } else if (!in_game && !strstr(buf + 4, "Bienvenue")) {
+                }
+                // Détecter la fin de l'édition de bio
+                else if (strstr(buf + 4, "Bio enregistrée")) {
+                    editing_bio = 0;
+                    puts(buf + 4);
                     printf("> ");
                     fflush(stdout);
+                }
+                else {
+                    puts(buf + 4);
+                    if (myturn && strstr(buf + 4, "invalide")) {
+                        printf("Votre tour (/0-11, /d, /q ou message): ");
+                        fflush(stdout);
+                    } else if (!in_game && !strstr(buf + 4, "Bienvenue") && !editing_bio) {
+                        printf("> ");
+                        fflush(stdout);
+                    }
                 }
             }
             // Message de chat
             else if (!strncmp(buf, "CHAT ", 5)) {
                 printf("\n💬 %s\n", buf + 5);
                 // Ne pas réafficher le prompt automatiquement
+            }
+            // Bio reçue
+            else if (!strncmp(buf, "BIO", 3)) {
+                // Afficher la bio complète (multi-lignes)
+                printf("%s\n", buf + 4);  // Sauter "BIO\n"
+                
+                // Lire les lignes suivantes jusqu'à trouver "=========="
+                while (1) {
+                    if (recv_line(fd, buf, sizeof(buf)) < 0) {
+                        break;
+                    }
+                    printf("%s\n", buf);
+                    if (strstr(buf, "========")) {
+                        break;
+                    }
+                }
+                
+                if (!in_game) {
+                    printf("> ");
+                    fflush(stdout);
+                }
             }
             else if (!strncmp(buf, "END ", 4)) {
                 puts(buf);
@@ -298,8 +345,13 @@ int main(int argc, char **argv) {
                 buf[len - 1] = '\0';
             }
             
-            // Ligne vide, ignorer
+            // Ligne vide
             if (strlen(buf) == 0) {
+                // En mode édition de bio, envoyer la ligne vide pour terminer
+                if (editing_bio) {
+                    send(fd, "\n", 1, 0);
+                }
+                // Sinon, ignorer
                 continue;
             }
             
@@ -344,6 +396,13 @@ int main(int argc, char **argv) {
                     char out[128];
                     snprintf(out, sizeof(out), "REFUSE %s\n", cmd + 7);
                     send(fd, out, strlen(out), 0);
+                } else if (!strcmp(cmd, "bio")) {
+                    // Envoyer simplement la commande BIO, le serveur gérera l'édition ligne par ligne
+                    send(fd, "BIO\n", 4, 0);
+                } else if (!strncmp(cmd, "whois ", 6)) {
+                    char out[128];
+                    snprintf(out, sizeof(out), "WHOIS %s\n", cmd + 6);
+                    send(fd, out, strlen(out), 0);
                 } else {
                     // Vérifier si c'est un chiffre pour jouer (0-11)
                     char* endptr;
@@ -370,8 +429,15 @@ int main(int argc, char **argv) {
                     }
                 }
             } else {
-                // Pas de '/', vérifier si c'est un message privé avec @username
-                if (buf[0] == '@') {
+                // Pas de '/', vérifier si on est en mode édition de bio
+                if (editing_bio) {
+                    // En mode édition de bio, envoyer le texte brut
+                    char out[300];
+                    snprintf(out, sizeof(out), "%s\n", buf);
+                    send(fd, out, strlen(out), 0);
+                }
+                // Sinon, vérifier si c'est un message privé avec @username
+                else if (buf[0] == '@') {
                     // Message privé : @username message
                     char* space = strchr(buf + 1, ' ');
                     if (space) {

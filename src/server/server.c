@@ -367,6 +367,7 @@ int main() {
                         
                         if (username_valid) {
                             strcpy(clients[num_clients].username, username);
+                            clients[num_clients].bio_lines = 0;  // Initialiser la bio vide
                             printf("Client connecté: %s\n", clients[num_clients].username);
                             
                             char welcome[128];
@@ -390,7 +391,7 @@ int main() {
             }
             
             char buf[256];
-            if (recv_line(clients[i].socket_fd, buf, sizeof(buf)) <= 0) {
+            if (recv_line(clients[i].socket_fd, buf, sizeof(buf)) < 0) {
                 // Déconnexion
                 printf("Client déconnecté: %s\n", clients[i].username);
                 
@@ -449,6 +450,40 @@ int main() {
                 clients[i].opponent_index = -1;
                 clients[i].challenged_by = -1;
                 clients[i].watching_game = -1;
+                continue;
+            }
+            
+            // Si le client est en train d'éditer sa bio
+            if (clients[i].status == CLIENT_EDITING_BIO) {
+                // Ligne vide = fin de la bio
+                if (strlen(buf) == 0) {
+                    clients[i].status = CLIENT_WAITING;
+                    char msg[128];
+                    snprintf(msg, sizeof(msg), "MSG Bio enregistrée (%d ligne(s)).\n", clients[i].bio_lines);
+                    send_line(clients[i].socket_fd, msg);
+                    printf("[%s] a défini sa bio (%d lignes)\n", clients[i].username, clients[i].bio_lines);
+                    continue;
+                }
+                
+                // Ajouter la ligne si on n'a pas atteint la limite
+                if (clients[i].bio_lines < MAX_BIO_LINES) {
+                    strncpy(clients[i].bio[clients[i].bio_lines], buf, MAX_BIO_LINE_LEN - 1);
+                    clients[i].bio[clients[i].bio_lines][MAX_BIO_LINE_LEN - 1] = '\0';
+                    clients[i].bio_lines++;
+                    
+                    if (clients[i].bio_lines < MAX_BIO_LINES) {
+                        char prompt[64];
+                        snprintf(prompt, sizeof(prompt), "MSG Ligne %d: \n", clients[i].bio_lines + 1);
+                        send_line(clients[i].socket_fd, prompt);
+                    } else {
+                        // Limite atteinte, terminer automatiquement
+                        clients[i].status = CLIENT_WAITING;
+                        char msg[128];
+                        snprintf(msg, sizeof(msg), "MSG Bio enregistrée (%d lignes - limite atteinte).\n", clients[i].bio_lines);
+                        send_line(clients[i].socket_fd, msg);
+                        printf("[%s] a défini sa bio (%d lignes)\n", clients[i].username, clients[i].bio_lines);
+                    }
+                }
                 continue;
             }
             
@@ -527,6 +562,52 @@ int main() {
                     printf("[%s] a demandé le plateau (spectateur)\n", clients[i].username);
                 } else {
                     send_line(clients[i].socket_fd, "MSG Vous n'êtes pas en partie.\n");
+                }
+            }
+            // Commande BIO - Définir sa bio (mode édition interactive)
+            else if (!strcmp(buf, "BIO")) {
+                if (clients[i].status != CLIENT_WAITING) {
+                    send_line(clients[i].socket_fd, "MSG Vous ne pouvez éditer votre bio que depuis le lobby.\n");
+                } else {
+                    clients[i].status = CLIENT_EDITING_BIO;
+                    clients[i].bio_lines = 0;
+                    send_line(clients[i].socket_fd, "MSG Entrez votre bio (max 10 lignes, ligne vide pour terminer):\n");
+                    send_line(clients[i].socket_fd, "MSG Ligne 1: \n");
+                    printf("[%s] commence à éditer sa bio\n", clients[i].username);
+                }
+            }
+            // Commande WHOIS - Afficher la bio d'un joueur
+            else if (!strncmp(buf, "WHOIS ", 6)) {
+                char target[MAX_USERNAME_LEN];
+                strncpy(target, buf + 6, MAX_USERNAME_LEN - 1);
+                target[MAX_USERNAME_LEN - 1] = '\0';
+                
+                int target_idx = find_client_by_username(target);
+                
+                if (target_idx == -1) {
+                    send_line(clients[i].socket_fd, "MSG Utilisateur introuvable.\n");
+                } else {
+                    char response[2048];
+                    int offset = 0;
+                    
+                    offset += snprintf(response + offset, sizeof(response) - offset,
+                                      "BIO\n=== Bio de %s ===\n", clients[target_idx].username);
+                    
+                    if (clients[target_idx].bio_lines == 0) {
+                        offset += snprintf(response + offset, sizeof(response) - offset,
+                                         "(Aucune bio définie)\n");
+                    } else {
+                        for (int j = 0; j < clients[target_idx].bio_lines; j++) {
+                            offset += snprintf(response + offset, sizeof(response) - offset,
+                                             "%s\n", clients[target_idx].bio[j]);
+                        }
+                    }
+                    
+                    offset += snprintf(response + offset, sizeof(response) - offset,
+                                      "==================\n");
+                    
+                    send_line(clients[i].socket_fd, response);
+                    printf("[%s] a consulté la bio de [%s]\n", clients[i].username, target);
                 }
             }
             // Commande WATCH - Regarder une partie
