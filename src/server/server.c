@@ -657,6 +657,13 @@ int main() {
                             send_line(clients[i].socket_fd, "MSG Utilisateur introuvable.\n");
                         } else if (target_idx == i) {
                             send_line(clients[i].socket_fd, "MSG Vous ne pouvez pas vous envoyer un message à vous-même.\n");
+                        } else if (clients[target_idx].status == CLIENT_EDITING_BIO) {
+                            // Le destinataire est en train d'éditer sa bio
+                            char wait_msg[256];
+                            snprintf(wait_msg, sizeof(wait_msg), 
+                                     "MSG %s est en train d'éditer sa bio. Attendez qu'il termine.\n", 
+                                     clients[target_idx].username);
+                            send_line(clients[i].socket_fd, wait_msg);
                         } else {
                             // Envoyer le message privé au destinataire
                             char chat_msg[512];
@@ -682,14 +689,16 @@ int main() {
                             
                             // Envoyer à l'adversaire
                             int opponent_idx = clients[i].opponent_index;
-                            if (opponent_idx >= 0 && clients[opponent_idx].socket_fd > 0) {
+                            if (opponent_idx >= 0 && clients[opponent_idx].socket_fd > 0 
+                                && clients[opponent_idx].status != CLIENT_EDITING_BIO) {
                                 send_line(clients[opponent_idx].socket_fd, chat_msg);
                             }
                             
                             // Envoyer aux spectateurs
                             for (int j = 0; j < g->num_spectators; j++) {
                                 int spec_idx = g->spectator_indices[j];
-                                if (spec_idx >= 0 && clients[spec_idx].socket_fd > 0) {
+                                if (spec_idx >= 0 && clients[spec_idx].socket_fd > 0
+                                    && clients[spec_idx].status != CLIENT_EDITING_BIO) {
                                     send_line(clients[spec_idx].socket_fd, chat_msg);
                                 }
                             }
@@ -703,7 +712,8 @@ int main() {
                         // Envoyer aux joueurs
                         for (int j = 0; j < 2; j++) {
                             int player_idx = g->client_indices[j];
-                            if (player_idx >= 0 && clients[player_idx].socket_fd > 0) {
+                            if (player_idx >= 0 && clients[player_idx].socket_fd > 0
+                                && clients[player_idx].status != CLIENT_EDITING_BIO) {
                                 send_line(clients[player_idx].socket_fd, chat_msg);
                             }
                         }
@@ -711,7 +721,8 @@ int main() {
                         // Envoyer aux autres spectateurs (SAUF l'expéditeur)
                         for (int j = 0; j < g->num_spectators; j++) {
                             int spec_idx = g->spectator_indices[j];
-                            if (spec_idx >= 0 && spec_idx != i && clients[spec_idx].socket_fd > 0) {
+                            if (spec_idx >= 0 && spec_idx != i && clients[spec_idx].socket_fd > 0
+                                && clients[spec_idx].status != CLIENT_EDITING_BIO) {
                                 send_line(clients[spec_idx].socket_fd, chat_msg);
                             }
                         }
@@ -721,7 +732,8 @@ int main() {
                                  clients[i].username, message);
                         
                         for (int j = 0; j < num_clients; j++) {
-                            if (j != i && clients[j].socket_fd > 0 && clients[j].status == CLIENT_WAITING) {
+                            if (j != i && clients[j].socket_fd > 0 && clients[j].status == CLIENT_WAITING
+                                && clients[j].status != CLIENT_EDITING_BIO) {
                                 send_line(clients[j].socket_fd, chat_msg);
                             }
                         }
