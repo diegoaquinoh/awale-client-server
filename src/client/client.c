@@ -6,41 +6,52 @@
 #include <stdlib.h>
 #include <sys/select.h>
 
+// Codes de couleur ANSI (versions sombres)
+#define COLOR_RESET   "\033[0m"
+#define COLOR_RED     "\033[31m"
+#define COLOR_GREEN   "\033[32m"
+#define COLOR_YELLOW  "\033[33m"
+#define COLOR_BLUE    "\033[34m"
+#define COLOR_MAGENTA "\033[35m"
+#define COLOR_WHITE   "\033[37m"
+#define COLOR_BROWN   "\033[38;5;94m"
+#define COLOR_BOLD    "\033[1m"
+
 static void print_help(void) {
-    printf("\n╔═══════════════════════════════════════════╗\n");
+    printf("\n" COLOR_MAGENTA "╔═══════════════════════════════════════════╗\n");
     printf("║          COMMANDES DISPONIBLES            ║\n");
-    printf("╠═══════════════════════════════════════════╣\n");
-    printf("║ /list                - Joueurs en ligne   ║\n");
-    printf("║ /games               - Parties en cours   ║\n");
-    printf("║ /watch <id>          - Regarder partie    ║\n");
-    printf("║ /stopwatch           - Arrêter regarder   ║\n");
-    printf("║ /challenge <nom>     - Défier joueur      ║\n");
-    printf("║ /accept <nom>        - Accepter défi      ║\n");
-    printf("║ /refuse <nom>        - Refuser défi       ║\n");
-    printf("║ /board               - Afficher plateau   ║\n");
-    printf("║ /bio                 - Définir votre bio  ║\n");
-    printf("║ /whois <nom>         - Voir bio joueur    ║\n");
-    printf("║ /history             - Parties jouées     ║\n");
-    printf("║ /replay <num>        - Revoir une partie  ║\n");
-    printf("║ /help                - Cette aide         ║\n");
-    printf("╠═══════════════════════════════════════════╣\n");
-    printf("║ Gestion des amis:                         ║\n");
-    printf("║ /addfriend <nom>     - Demande d'ami      ║\n");
-    printf("║ /acceptfriend <nom>  - Accepter demande   ║\n");
-    printf("║ /friendrequests      - Demandes reçues    ║\n");
-    printf("║ /removefriend <nom>  - Retirer un ami     ║\n");
-    printf("║ /friends             - Liste de vos amis  ║\n");
-    printf("║ /private             - Toggle mode privé  ║\n");
-    printf("║ /save                - Toggle auto-save   ║\n");
-    printf("╠═══════════════════════════════════════════╣\n");
-    printf("║ En partie:                                ║\n");
-    printf("║ /0 à /11             - Jouer une case     ║\n");
-    printf("║ /d                   - Proposer égalité   ║\n");
-    printf("║ /q                   - Abandonner         ║\n");
-    printf("╠═══════════════════════════════════════════╣\n");
-    printf("║ @<nom> <msg>         - Message privé      ║\n");
-    printf("║ <message>            - Message public     ║\n");
-    printf("╚═══════════════════════════════════════════╝\n\n");
+    printf("╠═══════════════════════════════════════════╣\n" COLOR_RESET);
+    printf(COLOR_MAGENTA "║" COLOR_RESET " " COLOR_BLUE "/list" COLOR_RESET "                - Joueurs en ligne   " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/games" COLOR_RESET "               - Parties en cours   " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/watch <id>" COLOR_RESET "          - Regarder partie    " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/stopwatch" COLOR_RESET "           - Arrêter regarder   " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/challenge <nom>" COLOR_RESET "     - Défier joueur      " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/accept <nom>" COLOR_RESET "        - Accepter défi      " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/refuse <nom>" COLOR_RESET "        - Refuser défi       " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/board" COLOR_RESET "               - Afficher plateau   " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/bio" COLOR_RESET "                 - Définir votre bio  " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/whois <nom>" COLOR_RESET "         - Voir bio joueur    " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/history" COLOR_RESET "             - Parties jouées     " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/replay <num>" COLOR_RESET "        - Revoir une partie  " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/help" COLOR_RESET "                - Cette aide         " COLOR_MAGENTA "║\n");
+    printf(COLOR_MAGENTA "╠═══════════════════════════════════════════╣\n");
+    printf("║" COLOR_RESET " " COLOR_YELLOW "Gestion des amis:" COLOR_RESET "                         " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/addfriend <nom>" COLOR_RESET "     - Demande d'ami      " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/acceptfriend <nom>" COLOR_RESET "  - Accepter demande   " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/friendrequests" COLOR_RESET "      - Demandes reçues    " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/removefriend <nom>" COLOR_RESET "  - Retirer un ami     " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/friends" COLOR_RESET "             - Liste de vos amis  " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/private" COLOR_RESET "             - Toggle mode privé  " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/save" COLOR_RESET "                - Toggle auto-save   " COLOR_MAGENTA "║\n");
+    printf(COLOR_MAGENTA "╠═══════════════════════════════════════════╣\n");
+    printf("║" COLOR_RESET " " COLOR_YELLOW "En partie:" COLOR_RESET "                                " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/0 à /11" COLOR_RESET "             - Jouer une case     " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/d" COLOR_RESET "                   - Proposer égalité   " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "/q" COLOR_RESET "                   - Abandonner         " COLOR_MAGENTA "║\n");
+    printf(COLOR_MAGENTA "╠═══════════════════════════════════════════╣\n");
+    printf("║" COLOR_RESET " " COLOR_BLUE "@<nom> <msg>" COLOR_RESET "         - Message privé      " COLOR_MAGENTA "║\n");
+    printf("║" COLOR_RESET " <message>            - Message public     " COLOR_MAGENTA "║\n");
+    printf("╚═══════════════════════════════════════════╝" COLOR_RESET "\n\n");
 }
 
 static int connect_to(const char* ip, int port) {
@@ -90,32 +101,35 @@ static int recv_line(int fd, char *buf, size_t cap) {
 }
 
 static void render_state(const int b[12], int s0, int s1, int cur) {
-    printf("\n    P2 (%d pts)\n", s1);
-    printf("-------------------------\n");
+    printf("\n" COLOR_BLUE "    P2 (%d pts)" COLOR_RESET "\n", s1);
+    printf(COLOR_MAGENTA "-------------------------" COLOR_RESET "\n");
     
+    printf(COLOR_YELLOW " ");
     for (int i = 11; i >= 6; i--) {
         printf("%2d  ", i);
     }
-    printf("\n");
+    printf(COLOR_RESET "\n");
     
-    printf("+---+---+---+---+---+---+\n|");
+    printf(COLOR_MAGENTA "+---+---+---+---+---+---+\n" COLOR_RESET);
+    printf(COLOR_MAGENTA "|" COLOR_RESET);
     for (int i = 11; i >= 6; i--) {
-        printf("%2d |", b[i]);
+        printf(COLOR_BROWN "%2d " COLOR_RESET COLOR_MAGENTA "|" COLOR_RESET, b[i]);
     }
-    printf("\n+---+---+---+---+---+---+\n|");
-    
+    printf("\n" COLOR_MAGENTA "+---+---+---+---+---+---+\n" COLOR_RESET);
+    printf(COLOR_MAGENTA "|" COLOR_RESET);
     for (int i = 0; i <= 5; i++) {
-        printf("%2d |", b[i]);
+        printf(COLOR_BROWN "%2d " COLOR_RESET COLOR_MAGENTA "|" COLOR_RESET, b[i]);
     }
-    printf("\n+---+---+---+---+---+---+\n ");
+    printf("\n" COLOR_MAGENTA "+---+---+---+---+---+---+" COLOR_RESET "\n");
     
+    printf(COLOR_YELLOW " ");
     for (int i = 0; i <= 5; i++) {
         printf("%2d  ", i);
     }
-    printf("\n");
+    printf(COLOR_RESET "\n");
     
-    printf("--------------------------\n");
-    printf("    P1 (%d pts)   (au tour de P%d)\n\n", s0, cur + 1);
+    printf(COLOR_MAGENTA "--------------------------" COLOR_RESET "\n");
+    printf(COLOR_GREEN "    P1 (%d pts)" COLOR_RESET "   (au tour de " COLOR_BOLD COLOR_BLUE "P%d" COLOR_RESET ")\n\n", s0, cur + 1);
 }
 
 int main(int argc, char **argv) {
@@ -133,9 +147,9 @@ int main(int argc, char **argv) {
     char username[50];
     
     // Demander le username à l'utilisateur
-    printf("Entrez votre nom d'utilisateur: ");
+    printf(COLOR_BLUE "👤 Entrez votre nom d'utilisateur: " COLOR_RESET);
     if (!fgets(username, sizeof(username), stdin)) {
-        fprintf(stderr, "Erreur de lecture du username\n");
+        fprintf(stderr, COLOR_RED "✗ Erreur de lecture du username\n" COLOR_RESET);
         close(fd);
         return 1;
     }
@@ -146,7 +160,7 @@ int main(int argc, char **argv) {
         username[len - 1] = '\0';
     }
     
-    printf("Connexion au serveur...\n");
+    printf(COLOR_GREEN "✓ Connexion au serveur...\n" COLOR_RESET);
     print_help();
     
     while (1) {
@@ -164,7 +178,7 @@ int main(int argc, char **argv) {
         // Message du serveur
         if (FD_ISSET(fd, &rfds)) {
             if (recv_line(fd, buf, sizeof(buf)) < 0) {
-                puts("Déconnecté.");
+                printf(COLOR_RED "✗ Déconnecté du serveur.\n" COLOR_RESET);
                 break;
             }
             
@@ -176,26 +190,26 @@ int main(int argc, char **argv) {
             }
             // Liste des utilisateurs
             else if (!strncmp(buf, "USERLIST", 8)) {
-                printf("\n=== Joueurs disponibles ===\n");
+                printf("\n" COLOR_MAGENTA "=== Joueurs disponibles ===" COLOR_RESET "\n");
                 if (strlen(buf) > 9) {
                     char* token = strtok(buf + 9, " ");
                     while (token != NULL) {
-                        printf("  - %s\n", token);
+                        printf("  " COLOR_GREEN "• " COLOR_RESET "%s\n", token);
                         token = strtok(NULL, " ");
                     }
                 } else {
-                    printf("  Aucun joueur disponible.\n");
+                    printf("  " COLOR_YELLOW "Aucun joueur disponible.\n" COLOR_RESET);
                 }
-                printf("===========================\n\n");
+                printf(COLOR_MAGENTA "===========================" COLOR_RESET "\n\n");
                 
                 if (!in_game) {
-                    printf("> ");
+                    printf(COLOR_BLUE "> " COLOR_RESET);
                     fflush(stdout);
                 }
             }
             // Liste des parties
             else if (!strncmp(buf, "GAMESLIST", 9)) {
-                printf("\n=== Parties en cours ===\n");
+                printf("\n" COLOR_MAGENTA "=== Parties en cours ===" COLOR_RESET "\n");
                 if (strlen(buf) > 10) {
                     char* token = strtok(buf + 10, " ");
                     while (token != NULL) {
@@ -208,17 +222,17 @@ int main(int argc, char **argv) {
                             for (char* p = game_info; *p; p++) {
                                 if (*p == '_') *p = ' ';
                             }
-                            printf("  [%s] %s\n", token, game_info);
+                            printf("  " COLOR_YELLOW "[%s]" COLOR_RESET " %s\n", token, game_info);
                         }
                         token = strtok(NULL, " ");
                     }
                 } else {
-                    printf("  Aucune partie en cours.\n");
+                    printf("  " COLOR_YELLOW "Aucune partie en cours.\n" COLOR_RESET);
                 }
-                printf("========================\n\n");
+                printf(COLOR_MAGENTA "========================" COLOR_RESET "\n\n");
                 
                 if (!in_game) {
-                    printf("> ");
+                    printf(COLOR_BLUE "> " COLOR_RESET);
                     fflush(stdout);
                 }
             }
@@ -228,18 +242,18 @@ int main(int argc, char **argv) {
                 strncpy(challenger, buf + 14, sizeof(challenger) - 1);
                 challenger[sizeof(challenger) - 1] = '\0';
                 
-                printf("\n*** %s vous défie! ***\n", challenger);
-                printf("Tapez '/accept %s' pour accepter ou '/refuse %s' pour refuser\n\n", challenger, challenger);
+                printf("\n" COLOR_YELLOW "⚔️  %s vous défie! ⚔️" COLOR_RESET "\n", challenger);
+                printf("Tapez " COLOR_GREEN "'/accept %s'" COLOR_RESET " ou " COLOR_RED "'/refuse %s'" COLOR_RESET " pour répondre\n\n", challenger, challenger);
                 
                 if (!in_game) {
-                    printf("> ");
+                    printf(COLOR_BLUE "> " COLOR_RESET);
                     fflush(stdout);
                 }
             }
             else if (!strncmp(buf, "ROLE ", 5)) {
                 myrole = atoi(buf + 5);
                 in_game = 1;
-                printf("Vous êtes P%d.\n", myrole + 1);
+                printf(COLOR_BLUE "✓ Vous êtes P%d\n" COLOR_RESET, myrole + 1);
             }
             else if (!strncmp(buf, "STATE ", 6)) {
                 int b[12], s0, s1, cur;
@@ -253,13 +267,13 @@ int main(int argc, char **argv) {
                     myturn = (myrole == cur);
                     
                     if (myturn) {
-                        printf("Votre tour (/0-11, /d, /q ou message): ");
+                        printf(COLOR_GREEN "➤ À vous de jouer" COLOR_RESET " (/0-11, /d, /q): ");
                         fflush(stdout);
                     }
                 }
             }
             else if (!strncmp(buf, "ASKDRAW", 7)) {
-                printf("L'adversaire propose l'égalité. Accepter ? (o/n): ");
+                printf(COLOR_YELLOW "⚠️  L'adversaire propose l'égalité. Accepter ? (o/n): " COLOR_RESET);
                 fflush(stdout);
                 
                 char response[16];
@@ -272,7 +286,7 @@ int main(int argc, char **argv) {
                 }
             }
             else if (!strncmp(buf, "ASKSAVE", 7)) {
-                printf("Voulez-vous sauvegarder cette partie ? (o/n): ");
+                printf(COLOR_BLUE "💾 Sauvegarder cette partie ? (o/n): " COLOR_RESET);
                 fflush(stdout);
                 
                 char response[16];
@@ -303,17 +317,34 @@ int main(int argc, char **argv) {
                 // Détecter la fin de l'édition de bio
                 else if (strstr(buf + 4, "Bio enregistrée")) {
                     editing_bio = 0;
-                    puts(buf + 4);
-                    printf("> ");
+                    printf(COLOR_GREEN "✓ %s\n" COLOR_RESET, buf + 4);
+                    printf(COLOR_BLUE "> " COLOR_RESET);
                     fflush(stdout);
                 }
                 else {
-                    puts(buf + 4);
+                    // Colorer les messages d'erreur en rouge
+                    if (strstr(buf + 4, "invalide") || strstr(buf + 4, "Erreur") || 
+                        strstr(buf + 4, "impossible") || strstr(buf + 4, "n'existe pas")) {
+                        printf(COLOR_RED "✗ %s\n" COLOR_RESET, buf + 4);
+                    }
+                    // Messages de succès en vert
+                    else if (strstr(buf + 4, "accepté") || strstr(buf + 4, "ajouté") || 
+                             strstr(buf + 4, "activé") || strstr(buf + 4, "Sauvegarde")) {
+                        printf(COLOR_GREEN "✓ %s\n" COLOR_RESET, buf + 4);
+                    }
+                    // Messages info en cyan
+                    else if (strstr(buf + 4, "Mode privé") || strstr(buf + 4, "Mode auto-save")) {
+                        printf(COLOR_BLUE "ℹ %s\n" COLOR_RESET, buf + 4);
+                    }
+                    else {
+                        puts(buf + 4);
+                    }
+                    
                     if (myturn && strstr(buf + 4, "invalide")) {
-                        printf("Votre tour (/0-11, /d, /q ou message): ");
+                        printf(COLOR_GREEN "➤ À vous de jouer" COLOR_RESET " (/0-11, /d, /q): ");
                         fflush(stdout);
                     } else if (!in_game && !editing_bio) {
-                        printf("> ");
+                        printf(COLOR_BLUE "> " COLOR_RESET);
                         fflush(stdout);
                     }
                 }
@@ -321,15 +352,15 @@ int main(int argc, char **argv) {
             // Affichage d'une partie rejouée
             else if (!strncmp(buf, "REPLAY", 6)) {
                 // Afficher tout le contenu de la partie (tout est déjà dans buf après "REPLAY\n")
-                printf("\n%s\n", buf + 7);  // Afficher après "REPLAY\n"
+                printf("\n" COLOR_BLUE "%s\n" COLOR_RESET, buf + 7);  // Afficher après "REPLAY\n"
                 if (!in_game) {
-                    printf("> ");
+                    printf(COLOR_BLUE "> " COLOR_RESET);
                 }
                 fflush(stdout);
             }
             // Message de chat
             else if (!strncmp(buf, "CHAT ", 5)) {
-                printf("\n💬 %s\n", buf + 5);
+                printf("\n" COLOR_YELLOW "💬 %s\n" COLOR_RESET, buf + 5);
                 // Ne pas réafficher le prompt automatiquement
             }
             // Bio reçue
@@ -349,16 +380,16 @@ int main(int argc, char **argv) {
                 }
                 
                 if (!in_game) {
-                    printf("> ");
+                    printf(COLOR_BLUE "> " COLOR_RESET);
                     fflush(stdout);
                 }
             }
             else if (!strncmp(buf, "END ", 4)) {
-                puts(buf);
+                printf(COLOR_YELLOW "🏁 %s\n" COLOR_RESET, buf);
                 in_game = 0;
                 myturn = 0;
-                printf("\nPartie terminée. Vous pouvez défier un autre joueur.\n");
-                printf("> ");
+                printf("\n" COLOR_GREEN "✓ Partie terminée!\n" COLOR_RESET);
+                printf(COLOR_BLUE "> " COLOR_RESET);
                 fflush(stdout);
             }
             else {
@@ -396,7 +427,7 @@ int main(int argc, char **argv) {
                 if (!strcmp(cmd, "help")) {
                     print_help();
                     if (!in_game) {
-                        printf("> ");
+                        printf(COLOR_BLUE "> " COLOR_RESET);
                         fflush(stdout);
                     }
                 } else if (!strcmp(cmd, "q")) {
@@ -475,14 +506,14 @@ int main(int argc, char **argv) {
                             send(fd, out, strlen(out), 0);
                             myturn = 0;
                         } else if (in_game && !myturn) {
-                            printf("Ce n'est pas votre tour.\n");
+                            printf(COLOR_RED "✗ Ce n'est pas votre tour.\n" COLOR_RESET);
                         } else {
-                            printf("Vous n'êtes pas en partie.\n");
+                            printf(COLOR_RED "✗ Vous n'êtes pas en partie.\n" COLOR_RESET);
                         }
                     } else {
-                        printf("Commande inconnue. Tapez '/help' pour voir les commandes.\n");
+                        printf(COLOR_RED "✗ Commande inconnue. Tapez '/help' pour voir les commandes.\n" COLOR_RESET);
                         if (!in_game) {
-                            printf("> ");
+                            printf(COLOR_BLUE "> " COLOR_RESET);
                             fflush(stdout);
                         }
                     }
@@ -505,7 +536,7 @@ int main(int argc, char **argv) {
                         snprintf(out, sizeof(out), "CHAT @%s %s\n", buf + 1, space + 1);
                         send(fd, out, strlen(out), 0);
                     } else {
-                        printf("Usage: @<username> <message>\n");
+                        printf(COLOR_RED "✗ Usage: @<username> <message>\n" COLOR_RESET);
                     }
                 } else {
                     // Message de chat normal
