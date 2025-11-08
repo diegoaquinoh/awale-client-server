@@ -11,6 +11,14 @@
 #include "../../include/net.h"
 
 #define PORT 4321
+#define MAX_MOVES 200
+
+// Structure pour un coup joué
+typedef struct {
+    int player;      // 0 ou 1
+    int pit;         // Pit joué (0-11)
+    int seeds_captured;  // Graines capturées
+} Move;
 
 // Structure pour une partie en cours
 typedef struct {
@@ -21,6 +29,14 @@ typedef struct {
     char scores[2];
     char current_player;
     char active;
+    int private_mode;  // 1 si mode privé activé (un des joueurs l'a activé)
+    char player_names[2][MAX_USERNAME_LEN];  // Noms des joueurs
+    Move moves[MAX_MOVES];  // Historique des coups
+    int num_moves;  // Nombre de coups joués
+    time_t start_time;  // Heure de début
+    int ending;  // 1 si la partie est en train de se terminer (attente de sauvegarde)
+    char end_result[128];  // Résultat de la partie (pour la sauvegarde)
+    int responses_received;  // Nombre de réponses reçues pour la sauvegarde
 } Game;
 
 // Variables globales
@@ -102,9 +118,57 @@ static void init_game_state(Game* g) {
     g->scores[1] = 0;
     g->active = 1;
     g->num_spectators = 0;
+    g->private_mode = 0;  // Mode privé désactivé par défaut
+    g->num_moves = 0;  // Aucun coup joué
+    g->start_time = time(NULL);  // Heure de début
+    g->ending = 0;  // Pas en train de se terminer
+    g->responses_received = 0;  // Aucune réponse reçue
     for (int i = 0; i < MAX_SPECTATORS; i++) {
         g->spectator_indices[i] = -1;
     }
+}
+
+/**
+ * Sauvegarde une partie terminée dans un fichier
+ */
+static void save_game(Game* g, const char* result) {
+    // Créer le répertoire saved_games s'il n'existe pas
+    system("mkdir -p saved_games");
+    
+    // Créer un nom de fichier unique avec timestamp
+    char filename[256];
+    struct tm* timeinfo = localtime(&g->start_time);
+    snprintf(filename, sizeof(filename), "saved_games/game_%04d%02d%02d_%02d%02d%02d_%s_vs_%s.txt",
+             timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday,
+             timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec,
+             g->player_names[0], g->player_names[1]);
+    
+    FILE* f = fopen(filename, "w");
+    if (!f) {
+        printf("Erreur: impossible de sauvegarder la partie dans %s\n", filename);
+        return;
+    }
+    
+    fprintf(f, "=== PARTIE AWALE ===\n");
+    fprintf(f, "Date: %s", ctime(&g->start_time));
+    fprintf(f, "Joueur 1 (P1): %s\n", g->player_names[0]);
+    fprintf(f, "Joueur 2 (P2): %s\n", g->player_names[1]);
+    fprintf(f, "Résultat: %s\n", result);
+    fprintf(f, "Score final: %s=%d, %s=%d\n", 
+            g->player_names[0], g->scores[0], 
+            g->player_names[1], g->scores[1]);
+    fprintf(f, "\n=== HISTORIQUE DES COUPS (%d coups) ===\n", g->num_moves);
+    
+    for (int i = 0; i < g->num_moves; i++) {
+        fprintf(f, "Coup %d: %s joue pit %d (capture %d graines)\n",
+                i + 1,
+                g->player_names[g->moves[i].player],
+                g->moves[i].pit,
+                g->moves[i].seeds_captured);
+    }
+    
+    fclose(f);
+    printf("Partie sauvegardée dans: %s\n", filename);
 }
 
 /**
@@ -129,6 +193,121 @@ static int find_client_by_username(const char* username) {
         }
     }
     return -1;
+}
+
+/**
+ * Vérifie si un joueur est dans la liste d'amis d'un autre
+ */
+static int is_friend(int client_idx, const char* username) {
+    for (int i = 0; i < clients[client_idx].num_friends; i++) {
+        if (strcmp(clients[client_idx].friends[i], username) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * Ajoute un ami à la liste d'un joueur
+ */
+static int add_friend(int client_idx, const char* username) {
+    if (clients[client_idx].num_friends >= MAX_FRIENDS) {
+        return 0;  // Liste pleine
+    }
+    
+    if (is_friend(client_idx, username)) {
+        return -1;  // Déjà ami
+    }
+    
+    strcpy(clients[client_idx].friends[clients[client_idx].num_friends], username);
+    clients[client_idx].num_friends++;
+    return 1;  // Succès
+}
+
+/**
+ * Retire un ami de la liste d'un joueur
+ */
+static int remove_friend(int client_idx, const char* username) {
+    for (int i = 0; i < clients[client_idx].num_friends; i++) {
+        if (strcmp(clients[client_idx].friends[i], username) == 0) {
+            // Décaler tous les amis suivants
+            for (int j = i; j < clients[client_idx].num_friends - 1; j++) {
+                strcpy(clients[client_idx].friends[j], clients[client_idx].friends[j + 1]);
+            }
+            clients[client_idx].num_friends--;
+            return 1;  // Succès
+        }
+    }
+    return 0;  // Pas trouvé
+}
+
+/**
+ * Vérifie si une demande d'ami existe déjà
+ */
+static int has_friend_request(int client_idx, const char* username) {
+    for (int i = 0; i < clients[client_idx].num_friend_requests; i++) {
+        if (strcmp(clients[client_idx].friend_requests[i], username) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * Ajoute une demande d'ami
+ */
+static int add_friend_request(int client_idx, const char* username) {
+    if (clients[client_idx].num_friend_requests >= MAX_FRIENDS) {
+        return 0;  // Liste pleine
+    }
+    
+    if (has_friend_request(client_idx, username)) {
+        return -1;  // Demande déjà existante
+    }
+    
+    strcpy(clients[client_idx].friend_requests[clients[client_idx].num_friend_requests], username);
+    clients[client_idx].num_friend_requests++;
+    return 1;  // Succès
+}
+
+/**
+ * Retire une demande d'ami
+ */
+static int remove_friend_request(int client_idx, const char* username) {
+    for (int i = 0; i < clients[client_idx].num_friend_requests; i++) {
+        if (strcmp(clients[client_idx].friend_requests[i], username) == 0) {
+            // Décaler toutes les demandes suivantes
+            for (int j = i; j < clients[client_idx].num_friend_requests - 1; j++) {
+                strcpy(clients[client_idx].friend_requests[j], clients[client_idx].friend_requests[j + 1]);
+            }
+            clients[client_idx].num_friend_requests--;
+            return 1;  // Succès
+        }
+    }
+    return 0;  // Pas trouvé
+}
+
+/**
+ * Vérifie si un spectateur peut rejoindre une partie
+ */
+static int can_spectate(int spectator_idx, Game* g) {
+    // Si la partie n'est pas en mode privé, tout le monde peut regarder
+    if (!g->private_mode) {
+        return 1;
+    }
+    
+    // En mode privé, vérifier si le spectateur est ami avec au moins un des joueurs qui a le mode privé
+    for (int i = 0; i < 2; i++) {
+        int player_idx = g->client_indices[i];
+        if (player_idx >= 0 && clients[player_idx].private_mode) {
+            // Ce joueur a le mode privé, vérifier si le spectateur est son ami
+            if (is_friend(player_idx, clients[spectator_idx].username)) {
+                return 1;  // Autorisé car ami avec au moins un joueur en mode privé
+            }
+        }
+    }
+    
+    return 0;  // Pas autorisé
 }
 
 /**
@@ -162,6 +341,20 @@ static Game* find_game_for_client(int client_idx) {
         }
     }
     return NULL;
+}
+
+/**
+ * Trouve l'index de la partie d'un client
+ */
+static int find_game_index_for_client(int client_idx) {
+    for (int i = 0; i < MAX_CLIENTS / 2; i++) {
+        if (games[i].active && 
+            (games[i].client_indices[0] == client_idx || 
+             games[i].client_indices[1] == client_idx)) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 /**
@@ -232,27 +425,154 @@ static void send_games_list(int client_idx) {
 }
 
 /**
- * Termine une partie et notifie les spectateurs
+ * Finalise la fin de partie après réception des réponses de sauvegarde
  */
-static void end_game(Game* g, const char* end_message) {
+static void finalize_game_end(Game* g, int game_idx) {
+    // Compter les réponses positives
+    int save_requested = 0;
+    for (int i = 0; i < 2; i++) {
+        int player_idx = g->client_indices[i];
+        if (player_idx >= 0 && clients[player_idx].save_response == 1) {
+            save_requested = 1;
+            break;
+        }
+    }
+    
+    // Sauvegarder si au moins un joueur a accepté
+    if (save_requested) {
+        save_game(g, g->end_result);
+        
+        // Notifier les joueurs
+        for (int i = 0; i < 2; i++) {
+            int player_idx = g->client_indices[i];
+            if (player_idx >= 0 && clients[player_idx].socket_fd > 0) {
+                send_line(clients[player_idx].socket_fd, "MSG Partie sauvegardée.\n");
+            }
+        }
+    } else {
+        // Notifier les joueurs
+        for (int i = 0; i < 2; i++) {
+            int player_idx = g->client_indices[i];
+            if (player_idx >= 0 && clients[player_idx].socket_fd > 0) {
+                send_line(clients[player_idx].socket_fd, "MSG Partie non sauvegardée.\n");
+            }
+        }
+    }
+    
     // Notifier les spectateurs
     for (int i = 0; i < g->num_spectators; i++) {
         int spec_idx = g->spectator_indices[i];
         if (spec_idx >= 0 && clients[spec_idx].socket_fd > 0) {
             send_line(clients[spec_idx].socket_fd, "MSG La partie que vous regardiez est terminée.\n");
-            send_line(clients[spec_idx].socket_fd, end_message);
             clients[spec_idx].status = CLIENT_WAITING;
             clients[spec_idx].watching_game = -1;
         }
     }
     
     // Réinitialiser les statuts des joueurs
-    clients[g->client_indices[0]].status = CLIENT_WAITING;
-    clients[g->client_indices[1]].status = CLIENT_WAITING;
+    for (int i = 0; i < 2; i++) {
+        int player_idx = g->client_indices[i];
+        if (player_idx >= 0) {
+            clients[player_idx].status = CLIENT_WAITING;
+            clients[player_idx].save_response = -1;
+            clients[player_idx].game_to_save = -1;
+        }
+    }
     
     // Désactiver la partie
     g->active = 0;
     g->num_spectators = 0;
+    g->ending = 0;
+}
+
+/**
+ * Termine une partie et notifie les spectateurs (version non-bloquante)
+ */
+static void end_game(Game* g, const char* end_message, int game_idx) {
+    // Déterminer le résultat pour la sauvegarde
+    if (strstr(end_message, "draw")) {
+        snprintf(g->end_result, sizeof(g->end_result), "Égalité");
+    } else if (strstr(end_message, "winner 0")) {
+        snprintf(g->end_result, sizeof(g->end_result), "%s gagne", g->player_names[0]);
+    } else if (strstr(end_message, "winner 1")) {
+        snprintf(g->end_result, sizeof(g->end_result), "%s gagne", g->player_names[1]);
+    } else {
+        snprintf(g->end_result, sizeof(g->end_result), "Partie interrompue");
+    }
+    
+    // Vérifier si au moins un joueur a le mode sauvegarde activé
+    int auto_save = 0;
+    for (int i = 0; i < 2; i++) {
+        int player_idx = g->client_indices[i];
+        if (player_idx >= 0 && clients[player_idx].save_mode) {
+            auto_save = 1;
+            break;
+        }
+    }
+    
+    // Si sauvegarde automatique activée, sauvegarder et terminer immédiatement
+    if (auto_save) {
+        save_game(g, g->end_result);
+        
+        // Notifier les joueurs
+        for (int i = 0; i < 2; i++) {
+            int player_idx = g->client_indices[i];
+            if (player_idx >= 0 && clients[player_idx].socket_fd > 0) {
+                send_line(clients[player_idx].socket_fd, "MSG Partie sauvegardée automatiquement.\n");
+                clients[player_idx].status = CLIENT_WAITING;
+            }
+        }
+        
+        // Notifier les spectateurs
+        for (int i = 0; i < g->num_spectators; i++) {
+            int spec_idx = g->spectator_indices[i];
+            if (spec_idx >= 0 && clients[spec_idx].socket_fd > 0) {
+                send_line(clients[spec_idx].socket_fd, "MSG La partie que vous regardiez est terminée.\n");
+                clients[spec_idx].status = CLIENT_WAITING;
+                clients[spec_idx].watching_game = -1;
+            }
+        }
+        
+        // Désactiver la partie
+        g->active = 0;
+        g->num_spectators = 0;
+        return;
+    }
+    
+    // Sinon, demander aux joueurs (mode non-bloquant)
+    g->ending = 1;
+    g->responses_received = 0;
+    
+    int players_asked = 0;
+    for (int i = 0; i < 2; i++) {
+        int player_idx = g->client_indices[i];
+        if (player_idx >= 0 && clients[player_idx].socket_fd > 0) {
+            send_line(clients[player_idx].socket_fd, "ASKSAVE\n");
+            clients[player_idx].status = CLIENT_ASKED_SAVE;
+            clients[player_idx].save_response = -1;  // Pas de réponse encore
+            clients[player_idx].game_to_save = game_idx;
+            players_asked++;
+        }
+    }
+    
+    // Si aucun joueur n'est connecté, terminer immédiatement
+    if (players_asked == 0) {
+        // Notifier les spectateurs
+        for (int i = 0; i < g->num_spectators; i++) {
+            int spec_idx = g->spectator_indices[i];
+            if (spec_idx >= 0 && clients[spec_idx].socket_fd > 0) {
+                send_line(clients[spec_idx].socket_fd, "MSG La partie que vous regardiez est terminée.\n");
+                send_line(clients[spec_idx].socket_fd, end_message);
+                clients[spec_idx].status = CLIENT_WAITING;
+                clients[spec_idx].watching_game = -1;
+            }
+        }
+        
+        // Désactiver la partie
+        g->active = 0;
+        g->num_spectators = 0;
+        g->ending = 0;
+    }
 }
 
 int main() {
@@ -265,10 +585,14 @@ int main() {
         clients[i].opponent_index = -1;
         clients[i].challenged_by = -1;
         clients[i].watching_game = -1;
+        clients[i].save_mode = 0;
+        clients[i].save_response = -1;
+        clients[i].game_to_save = -1;
     }
     
     for (int i = 0; i < MAX_CLIENTS / 2; i++) {
         games[i].active = 0;
+        games[i].ending = 0;
     }
     
     // Création du socket serveur
@@ -320,66 +644,24 @@ int main() {
                 int new_fd = accept(srv, NULL, NULL);
                 if (new_fd >= 0) {
                     clients[num_clients].socket_fd = new_fd;
-                    clients[num_clients].status = CLIENT_CONNECTED;
+                    clients[num_clients].status = CLIENT_CONNECTED;  // En attente du username
                     clients[num_clients].opponent_index = -1;
                     clients[num_clients].challenged_by = -1;
+                    clients[num_clients].watching_game = -1;
+                    clients[num_clients].username[0] = '\0';  // Username vide pour l'instant
+                    clients[num_clients].bio_lines = 0;
+                    clients[num_clients].num_friends = 0;
+                    clients[num_clients].num_friend_requests = 0;
+                    clients[num_clients].private_mode = 0;
+                    clients[num_clients].save_mode = 0;
+                    clients[num_clients].save_response = -1;
+                    clients[num_clients].game_to_save = -1;
                     
-                    // Demander le username
+                    // Demander le username (non bloquant)
                     send_line(new_fd, "REGISTER\n");
                     
-                    char buf[128];
-                    char username[MAX_USERNAME_LEN];
-                    int username_valid = 0;
-                    
-                    if (recv_line(new_fd, buf, sizeof(buf)) > 0) {
-                        if (strncmp(buf, "USERNAME ", 9) == 0) {
-                            strncpy(username, buf + 9, MAX_USERNAME_LEN - 1);
-                            username[MAX_USERNAME_LEN - 1] = '\0';
-                            
-                            // Valider le format du username
-                            if (!is_valid_username(username)) {
-                                send_line(new_fd, "MSG Username invalide. Il doit contenir au moins 2 caractères alphanumériques, _ ou -. Déconnexion.\n");
-                                close(new_fd);
-                                printf("Connexion refusée: username '%s' invalide (format)\n", username);
-                                continue;
-                            }
-                            
-                            // Vérifier si le username est déjà pris
-                            int username_taken = 0;
-                            for (int j = 0; j < num_clients; j++) {
-                                if (clients[j].socket_fd > 0 && strcmp(clients[j].username, username) == 0) {
-                                    username_taken = 1;
-                                    break;
-                                }
-                            }
-                            
-                            if (username_taken) {
-                                send_line(new_fd, "MSG Username déjà pris. Déconnexion.\n");
-                                close(new_fd);
-                                printf("Connexion refusée: username '%s' déjà pris\n", username);
-                            } else {
-                                username_valid = 1;
-                            }
-                        } else {
-                            strcpy(username, "Anonymous");
-                            username_valid = 1;
-                        }
-                        
-                        if (username_valid) {
-                            strcpy(clients[num_clients].username, username);
-                            clients[num_clients].bio_lines = 0;  // Initialiser la bio vide
-                            printf("Client connecté: %s\n", clients[num_clients].username);
-                            
-                            char welcome[128];
-                            snprintf(welcome, sizeof(welcome), "MSG Bienvenue %s! Tapez '/list' pour voir les joueurs disponibles.\n", clients[num_clients].username);
-                            send_line(new_fd, welcome);
-                            
-                            clients[num_clients].status = CLIENT_WAITING;
-                            num_clients++;
-                        }
-                    } else {
-                        close(new_fd);
-                    }
+                    printf("Nouvelle connexion acceptée (en attente du username)\n");
+                    num_clients++;
                 }
             }
         }
@@ -393,21 +675,57 @@ int main() {
             char buf[256];
             if (recv_line(clients[i].socket_fd, buf, sizeof(buf)) < 0) {
                 // Déconnexion
-                printf("Client déconnecté: %s\n", clients[i].username);
+                if (clients[i].username[0] != '\0') {
+                    printf("Client déconnecté: %s\n", clients[i].username);
+                } else {
+                    printf("Client déconnecté (pas de username)\n");
+                }
                 
                 // Si le client était en partie, l'adversaire gagne automatiquement
                 if (clients[i].status == CLIENT_IN_GAME) {
-                    Game* g = find_game_for_client(i);
+                    int game_idx = find_game_index_for_client(i);
+                    Game* g = (game_idx >= 0) ? &games[game_idx] : NULL;
                     if (g) {
                         int opponent_idx = clients[i].opponent_index;
+                        
+                        // Préparer le résultat pour sauvegarde
+                        int winner_id = 1 - clients[i].player_id;
+                        snprintf(g->end_result, sizeof(g->end_result), "%s gagne par forfait (%s déconnecté)", 
+                                g->player_names[winner_id], clients[i].username);
+                        
                         if (opponent_idx >= 0 && clients[opponent_idx].socket_fd > 0) {
                             char end_msg[200];
                             snprintf(end_msg, sizeof(end_msg), 
                                     "END %s s'est déconnecté. Vous gagnez par forfait!\n",
                                     clients[i].username);
                             send_line(clients[opponent_idx].socket_fd, end_msg);
-                            clients[opponent_idx].status = CLIENT_WAITING;
-                            clients[opponent_idx].opponent_index = -1;
+                            
+                            // Vérifier si l'adversaire ou le joueur déconnecté a le mode sauvegarde activé
+                            if (clients[opponent_idx].save_mode || clients[i].save_mode) {
+                                // Sauvegarde automatique
+                                save_game(g, g->end_result);
+                                send_line(clients[opponent_idx].socket_fd, "MSG Partie sauvegardée automatiquement.\n");
+                                clients[opponent_idx].status = CLIENT_WAITING;
+                                clients[opponent_idx].opponent_index = -1;
+                                g->active = 0;
+                                g->num_spectators = 0;
+                            } else {
+                                // Demander à l'adversaire s'il veut sauvegarder (non-bloquant)
+                                g->ending = 1;
+                                g->responses_received = 0;
+                                send_line(clients[opponent_idx].socket_fd, "ASKSAVE\n");
+                                clients[opponent_idx].status = CLIENT_ASKED_SAVE;
+                                clients[opponent_idx].save_response = -1;
+                                clients[opponent_idx].game_to_save = game_idx;
+                                clients[opponent_idx].opponent_index = -1;
+                            }
+                        } else {
+                            // Pas d'adversaire connecté, sauvegarder si le joueur déconnecté avait le mode actif
+                            if (clients[i].save_mode) {
+                                save_game(g, g->end_result);
+                            }
+                            g->active = 0;
+                            g->num_spectators = 0;
                         }
                         
                         // Notifier les spectateurs
@@ -424,10 +742,29 @@ int main() {
                                 clients[spec_idx].watching_game = -1;
                             }
                         }
+                    }
+                }
+                // Si le client était en train de répondre à une demande de sauvegarde
+                else if (clients[i].status == CLIENT_ASKED_SAVE) {
+                    int game_idx = clients[i].game_to_save;
+                    if (game_idx >= 0 && game_idx < MAX_CLIENTS / 2 && games[game_idx].ending) {
+                        // Considérer la déconnexion comme un "NO"
+                        clients[i].save_response = 0;
+                        games[game_idx].responses_received++;
                         
-                        // Désactiver la partie
-                        g->active = 0;
-                        g->num_spectators = 0;
+                        // Compter combien de joueurs sont encore connectés
+                        int connected_players = 0;
+                        for (int j = 0; j < 2; j++) {
+                            int player_idx = games[game_idx].client_indices[j];
+                            if (player_idx >= 0 && player_idx != i && clients[player_idx].socket_fd > 0) {
+                                connected_players++;
+                            }
+                        }
+                        
+                        // Si on a reçu toutes les réponses, finaliser la partie
+                        if (games[game_idx].responses_received >= connected_players + 1) {
+                            finalize_game_end(&games[game_idx], game_idx);
+                        }
                     }
                 }
                 // Si le client était spectateur, le retirer de la liste
@@ -450,6 +787,86 @@ int main() {
                 clients[i].opponent_index = -1;
                 clients[i].challenged_by = -1;
                 clients[i].watching_game = -1;
+                continue;
+            }
+            
+            // Si le client est en attente de son username
+            if (clients[i].status == CLIENT_CONNECTED) {
+                if (strncmp(buf, "USERNAME ", 9) == 0) {
+                    char username[MAX_USERNAME_LEN];
+                    strncpy(username, buf + 9, MAX_USERNAME_LEN - 1);
+                    username[MAX_USERNAME_LEN - 1] = '\0';
+                    
+                    // Valider le format du username
+                    if (!is_valid_username(username)) {
+                        send_line(clients[i].socket_fd, "MSG Username invalide. Il doit contenir au moins 2 caractères alphanumériques, _ ou -. Déconnexion.\n");
+                        close(clients[i].socket_fd);
+                        clients[i].socket_fd = -1;
+                        printf("Connexion refusée: username '%s' invalide (format)\n", username);
+                        continue;
+                    }
+                    
+                    // Vérifier si le username est déjà pris
+                    int username_taken = 0;
+                    for (int j = 0; j < num_clients; j++) {
+                        if (j != i && clients[j].socket_fd > 0 && strcmp(clients[j].username, username) == 0) {
+                            username_taken = 1;
+                            break;
+                        }
+                    }
+                    
+                    if (username_taken) {
+                        send_line(clients[i].socket_fd, "MSG Username déjà pris. Déconnexion.\n");
+                        close(clients[i].socket_fd);
+                        clients[i].socket_fd = -1;
+                        printf("Connexion refusée: username '%s' déjà pris\n", username);
+                        continue;
+                    }
+                    
+                    // Username valide, enregistrer
+                    strcpy(clients[i].username, username);
+                    clients[i].status = CLIENT_WAITING;
+                    
+                    char welcome[128];
+                    snprintf(welcome, sizeof(welcome), "MSG Bienvenue %s! Tapez '/list' pour voir les joueurs disponibles.\n", username);
+                    send_line(clients[i].socket_fd, welcome);
+                    
+                    printf("Client connecté: %s\n", username);
+                } else {
+                    // Message inattendu, ignorer
+                    send_line(clients[i].socket_fd, "MSG Veuillez envoyer votre username avec 'USERNAME <nom>'.\n");
+                }
+                continue;
+            }
+            
+            // Si le client répond à une demande de sauvegarde
+            if (clients[i].status == CLIENT_ASKED_SAVE) {
+                if (!strcmp(buf, "YES")) {
+                    clients[i].save_response = 1;
+                } else {
+                    clients[i].save_response = 0;
+                }
+                
+                // Vérifier si on a reçu toutes les réponses
+                int game_idx = clients[i].game_to_save;
+                if (game_idx >= 0 && game_idx < MAX_CLIENTS / 2 && games[game_idx].ending) {
+                    games[game_idx].responses_received++;
+                    
+                    // Compter combien de joueurs sont encore connectés
+                    int connected_players = 0;
+                    for (int j = 0; j < 2; j++) {
+                        int player_idx = games[game_idx].client_indices[j];
+                        if (player_idx >= 0 && clients[player_idx].socket_fd > 0) {
+                            connected_players++;
+                        }
+                    }
+                    
+                    // Si on a reçu toutes les réponses, finaliser la partie
+                    if (games[game_idx].responses_received >= connected_players) {
+                        finalize_game_end(&games[game_idx], game_idx);
+                    }
+                }
+                
                 continue;
             }
             
@@ -610,6 +1027,236 @@ int main() {
                     printf("[%s] a consulté la bio de [%s]\n", clients[i].username, target);
                 }
             }
+            // Commande ADDFRIEND - Ajouter un ami
+            else if (!strncmp(buf, "ADDFRIEND ", 10)) {
+                char friend_name[MAX_USERNAME_LEN];
+                strncpy(friend_name, buf + 10, MAX_USERNAME_LEN - 1);
+                friend_name[MAX_USERNAME_LEN - 1] = '\0';
+                
+                int friend_idx = find_client_by_username(friend_name);
+                
+                if (friend_idx == -1) {
+                    send_line(clients[i].socket_fd, "MSG Utilisateur introuvable.\n");
+                } else if (friend_idx == i) {
+                    send_line(clients[i].socket_fd, "MSG Vous ne pouvez pas vous ajouter vous-même comme ami.\n");
+                } else if (is_friend(i, friend_name)) {
+                    send_line(clients[i].socket_fd, "MSG Cet utilisateur est déjà votre ami.\n");
+                } else {
+                    // Envoyer une demande d'ami
+                    int result = add_friend_request(friend_idx, clients[i].username);
+                    if (result == 1) {
+                        char msg[128];
+                        snprintf(msg, sizeof(msg), "MSG Demande d'ami envoyée à %s.\n", friend_name);
+                        send_line(clients[i].socket_fd, msg);
+                        
+                        // Notifier le destinataire
+                        char notif[200];
+                        snprintf(notif, sizeof(notif), "MSG %s vous a envoyé une demande d'ami. Tapez '/acceptfriend %s' pour accepter.\n", 
+                                clients[i].username, clients[i].username);
+                        send_line(clients[friend_idx].socket_fd, notif);
+                        
+                        printf("[%s] a envoyé une demande d'ami à [%s]\n", clients[i].username, friend_name);
+                    } else if (result == -1) {
+                        send_line(clients[i].socket_fd, "MSG Vous avez déjà envoyé une demande d'ami à cet utilisateur.\n");
+                    } else {
+                        send_line(clients[i].socket_fd, "MSG L'utilisateur a trop de demandes en attente.\n");
+                    }
+                }
+            }
+            // Commande ACCEPTFRIEND - Accepter une demande d'ami
+            else if (!strncmp(buf, "ACCEPTFRIEND ", 13)) {
+                char friend_name[MAX_USERNAME_LEN];
+                strncpy(friend_name, buf + 13, MAX_USERNAME_LEN - 1);
+                friend_name[MAX_USERNAME_LEN - 1] = '\0';
+                
+                if (!has_friend_request(i, friend_name)) {
+                    send_line(clients[i].socket_fd, "MSG Vous n'avez pas de demande d'ami de cet utilisateur.\n");
+                } else {
+                    int friend_idx = find_client_by_username(friend_name);
+                    
+                    // Ajouter l'ami des deux côtés
+                    int result1 = add_friend(i, friend_name);
+                    int result2 = -1;
+                    if (friend_idx != -1) {
+                        result2 = add_friend(friend_idx, clients[i].username);
+                    }
+                    
+                    if (result1 == 1 && result2 == 1) {
+                        // Retirer la demande
+                        remove_friend_request(i, friend_name);
+                        
+                        char msg[128];
+                        snprintf(msg, sizeof(msg), "MSG Vous êtes maintenant ami avec %s.\n", friend_name);
+                        send_line(clients[i].socket_fd, msg);
+                        
+                        // Notifier l'autre joueur
+                        if (friend_idx != -1) {
+                            snprintf(msg, sizeof(msg), "MSG %s a accepté votre demande d'ami.\n", clients[i].username);
+                            send_line(clients[friend_idx].socket_fd, msg);
+                        }
+                        
+                        printf("[%s] et [%s] sont maintenant amis\n", clients[i].username, friend_name);
+                    } else {
+                        send_line(clients[i].socket_fd, "MSG Erreur: liste d'amis pleine.\n");
+                    }
+                }
+            }
+            // Commande LISTFRIENDREQUESTS - Lister les demandes d'amis reçues
+            else if (!strcmp(buf, "LISTFRIENDREQUESTS")) {
+                char line[256];
+                
+                snprintf(line, sizeof(line), "MSG === Demandes d'amis reçues (%d) ===\n", clients[i].num_friend_requests);
+                send_line(clients[i].socket_fd, line);
+                
+                if (clients[i].num_friend_requests == 0) {
+                    send_line(clients[i].socket_fd, "MSG Aucune demande d'ami en attente.\n");
+                } else {
+                    for (int j = 0; j < clients[i].num_friend_requests; j++) {
+                        snprintf(line, sizeof(line), "MSG - %s (tapez '/acceptfriend %s' pour accepter)\n", 
+                                clients[i].friend_requests[j], clients[i].friend_requests[j]);
+                        send_line(clients[i].socket_fd, line);
+                    }
+                }
+                
+                send_line(clients[i].socket_fd, "MSG ==============================\n");
+            }
+            // Commande REMOVEFRIEND - Retirer un ami
+            else if (!strncmp(buf, "REMOVEFRIEND ", 13)) {
+                char friend_name[MAX_USERNAME_LEN];
+                strncpy(friend_name, buf + 13, MAX_USERNAME_LEN - 1);
+                friend_name[MAX_USERNAME_LEN - 1] = '\0';
+                
+                int result = remove_friend(i, friend_name);
+                if (result == 1) {
+                    char msg[128];
+                    snprintf(msg, sizeof(msg), "MSG %s a été retiré de votre liste d'amis.\n", friend_name);
+                    send_line(clients[i].socket_fd, msg);
+                    printf("[%s] a retiré [%s] de sa liste d'amis\n", clients[i].username, friend_name);
+                } else {
+                    send_line(clients[i].socket_fd, "MSG Cet utilisateur n'est pas dans votre liste d'amis.\n");
+                }
+            }
+            // Commande LISTFRIENDS - Lister ses amis
+            else if (!strcmp(buf, "LISTFRIENDS")) {
+                char line[256];
+                
+                snprintf(line, sizeof(line), "MSG === Vos amis (%d/%d) ===\n", clients[i].num_friends, MAX_FRIENDS);
+                send_line(clients[i].socket_fd, line);
+                
+                if (clients[i].num_friends == 0) {
+                    send_line(clients[i].socket_fd, "MSG Aucun ami dans votre liste.\n");
+                } else {
+                    for (int j = 0; j < clients[i].num_friends; j++) {
+                        snprintf(line, sizeof(line), "MSG - %s\n", clients[i].friends[j]);
+                        send_line(clients[i].socket_fd, line);
+                    }
+                }
+                
+                send_line(clients[i].socket_fd, "MSG ==================\n");
+            }
+            // Commande PRIVATE - Toggle du mode privé
+            else if (!strcmp(buf, "PRIVATE")) {
+                // Inverser le mode privé
+                clients[i].private_mode = !clients[i].private_mode;
+                
+                if (clients[i].private_mode) {
+                    send_line(clients[i].socket_fd, "MSG Mode privé activé. Seuls vos amis pourront regarder vos parties.\n");
+                    printf("[%s] a activé le mode privé\n", clients[i].username);
+                } else {
+                    send_line(clients[i].socket_fd, "MSG Mode privé désactivé. Tout le monde peut regarder vos parties.\n");
+                    printf("[%s] a désactivé le mode privé\n", clients[i].username);
+                }
+            }
+            // Commande SAVE - Toggle du mode sauvegarde automatique
+            else if (!strcmp(buf, "SAVE")) {
+                // Inverser le mode sauvegarde
+                clients[i].save_mode = !clients[i].save_mode;
+                
+                if (clients[i].save_mode) {
+                    send_line(clients[i].socket_fd, "MSG Mode sauvegarde activé. Vos parties seront automatiquement sauvegardées.\n");
+                    printf("[%s] a activé le mode sauvegarde\n", clients[i].username);
+                } else {
+                    send_line(clients[i].socket_fd, "MSG Mode sauvegarde désactivé. Vos parties ne seront plus sauvegardées automatiquement.\n");
+                    printf("[%s] a désactivé le mode sauvegarde\n", clients[i].username);
+                }
+            }
+            // Commande HISTORY - Lister les parties sauvegardées
+            else if (!strcmp(buf, "HISTORY")) {
+                FILE* p = popen("ls -1t saved_games/*.txt 2>/dev/null | head -20", "r");
+                if (!p) {
+                    send_line(clients[i].socket_fd, "MSG Aucune partie sauvegardée.\n");
+                } else {
+                    char line[512];
+                    char response[4096] = "MSG === Parties sauvegardées (max 20) ===\n";
+                    int count = 0;
+                    
+                    while (fgets(line, sizeof(line), p) && count < 20) {
+                        // Retirer le \n
+                        line[strcspn(line, "\n")] = 0;
+                        
+                        // Extraire juste le nom du fichier
+                        char* filename = strrchr(line, '/');
+                        if (filename) filename++;
+                        else filename = line;
+                        
+                        char entry[256];
+                        snprintf(entry, sizeof(entry), "%d. %s\n", ++count, filename);
+                        strcat(response, entry);
+                    }
+                    
+                    if (count == 0) {
+                        strcpy(response, "MSG Aucune partie sauvegardée.\n");
+                    } else {
+                        strcat(response, "Tapez '/replay <numéro>' pour revoir une partie.\n");
+                    }
+                    
+                    pclose(p);
+                    send_line(clients[i].socket_fd, response);
+                }
+            }
+            // Commande REPLAY - Afficher le contenu d'une partie sauvegardée
+            else if (!strncmp(buf, "REPLAY ", 7)) {
+                int game_num = atoi(buf + 7);
+                
+                if (game_num < 1 || game_num > 20) {
+                    send_line(clients[i].socket_fd, "MSG Numéro invalide. Tapez '/history' pour voir la liste.\n");
+                } else {
+                    // Obtenir le nom du fichier
+                    char cmd[256];
+                    snprintf(cmd, sizeof(cmd), "ls -1t saved_games/*.txt 2>/dev/null | head -20 | sed -n '%dp'", game_num);
+                    
+                    FILE* p = popen(cmd, "r");
+                    if (!p) {
+                        send_line(clients[i].socket_fd, "MSG Erreur lors de la lecture.\n");
+                    } else {
+                        char filename[256];
+                        if (fgets(filename, sizeof(filename), p)) {
+                            filename[strcspn(filename, "\n")] = 0;
+                            pclose(p);
+                            
+                            // Lire et envoyer le contenu du fichier
+                            FILE* f = fopen(filename, "r");
+                            if (!f) {
+                                send_line(clients[i].socket_fd, "MSG Impossible d'ouvrir le fichier.\n");
+                            } else {
+                                char response[8192] = "REPLAY\n";
+                                char line[512];
+                                
+                                while (fgets(line, sizeof(line), f)) {
+                                    strcat(response, line);
+                                }
+                                
+                                fclose(f);
+                                send_line(clients[i].socket_fd, response);
+                                printf("[%s] a consulté la partie: %s\n", clients[i].username, filename);
+                            }
+                        } else {
+                            pclose(p);
+                            send_line(clients[i].socket_fd, "MSG Partie introuvable.\n");
+                        }
+                    }
+                }
+            }
             // Commande WATCH - Regarder une partie
             else if (!strncmp(buf, "WATCH ", 6)) {
                 int game_id = atoi(buf + 6);
@@ -618,6 +1265,8 @@ int main() {
                     send_line(clients[i].socket_fd, "MSG Partie introuvable.\n");
                 } else if (games[game_id].num_spectators >= MAX_SPECTATORS) {
                     send_line(clients[i].socket_fd, "MSG Partie pleine (trop de spectateurs).\n");
+                } else if (!can_spectate(i, &games[game_id])) {
+                    send_line(clients[i].socket_fd, "MSG Cette partie est en mode privé. Vous devez être ami avec un des joueurs.\n");
                 } else {
                     // Ajouter le spectateur
                     games[game_id].spectator_indices[games[game_id].num_spectators] = i;
@@ -809,6 +1458,15 @@ int main() {
                     init_game_state(&games[game_idx]);
                     games[game_idx].current_player = 0;
                     
+                    // Enregistrer les noms des joueurs
+                    strcpy(games[game_idx].player_names[0], clients[games[game_idx].client_indices[0]].username);
+                    strcpy(games[game_idx].player_names[1], clients[games[game_idx].client_indices[1]].username);
+                    
+                    // Activer le mode privé si un des joueurs l'a activé
+                    if (clients[challenger_idx].private_mode || clients[i].private_mode) {
+                        games[game_idx].private_mode = 1;
+                    }
+                    
                     // Mettre à jour les statuts
                     clients[challenger_idx].status = CLIENT_IN_GAME;
                     clients[challenger_idx].opponent_index = i;
@@ -869,7 +1527,8 @@ int main() {
             // Commandes de jeu (MOVE, DRAW) pour les clients en partie
             else if (clients[i].status == CLIENT_IN_GAME) {
                 Game* g = find_game_for_client(i);
-                if (g == NULL) continue;
+                int game_idx = find_game_index_for_client(i);
+                if (g == NULL || game_idx == -1) continue;
                 
                 int player_id = clients[i].player_id;
                 int opponent_idx = clients[i].opponent_index;
@@ -892,7 +1551,7 @@ int main() {
                     // Terminer la partie
                     char end_msg[64];
                     snprintf(end_msg, sizeof(end_msg), "END winner %d\n", winner);
-                    end_game(g, end_msg);
+                    end_game(g, end_msg, game_idx);
                     
                     printf("%s a abandonné contre %s\n", clients[i].username, clients[opponent_idx].username);
                     continue;
@@ -942,6 +1601,14 @@ int main() {
                     char gained = collect_seeds((char)player_id, (char)last);
                     g->scores[player_id] += gained;
                     
+                    // Enregistrer le coup dans l'historique
+                    if (g->num_moves < MAX_MOVES) {
+                        g->moves[g->num_moves].player = player_id;
+                        g->moves[g->num_moves].pit = pit;
+                        g->moves[g->num_moves].seeds_captured = gained;
+                        g->num_moves++;
+                    }
+                    
                     // Vérifier fin de partie
                     memcpy(board, g->board, 12);
                     memcpy(scores, g->scores, 2);
@@ -965,7 +1632,7 @@ int main() {
                         }
                         
                         // Terminer la partie
-                        end_game(g, end_msg);
+                        end_game(g, end_msg, game_idx);
                         continue;
                     }
                     
@@ -997,7 +1664,7 @@ int main() {
                                    clients[g->client_indices[1]].username);
                             
                             // Terminer la partie
-                            end_game(g, "END draw\n");
+                            end_game(g, "END draw\n", game_idx);
                         } else {
                             send_line(clients[i].socket_fd, "MSG Égalité refusée.\n");
                             send_line(clients[opponent_idx].socket_fd, "MSG Égalité refusée par l'adversaire.\n");

@@ -7,29 +7,40 @@
 #include <sys/select.h>
 
 static void print_help(void) {
-    printf("\n╔════════════════════════════════════════╗\n");
-    printf("║         COMMANDES DISPONIBLES          ║\n");
-    printf("╠════════════════════════════════════════╣\n");
-    printf("║ /list              - Joueurs en ligne  ║\n");
-    printf("║ /games             - Parties en cours  ║\n");
-    printf("║ /watch <id>        - Regarder partie   ║\n");
-    printf("║ /stopwatch         - Arrêter regarder  ║\n");
-    printf("║ /challenge <nom>   - Défier joueur     ║\n");
-    printf("║ /accept <nom>      - Accepter défi     ║\n");
-    printf("║ /refuse <nom>      - Refuser défi      ║\n");
-    printf("║ /board             - Afficher plateau  ║\n");
-    printf("║ /bio               - Définir votre bio ║\n");
-    printf("║ /whois <nom>       - Voir bio joueur   ║\n");
-    printf("║ /help              - Cette aide        ║\n");
-    printf("╠════════════════════════════════════════╣\n");
-    printf("║ En partie:                             ║\n");
-    printf("║ /0 à /11           - Jouer une case    ║\n");
-    printf("║ /d                 - Proposer égalité  ║\n");
-    printf("║ /q                 - Abandonner        ║\n");
-    printf("╠════════════════════════════════════════╣\n");
-    printf("║ @<nom> <msg>       - Message privé     ║\n");
-    printf("║ <message>          - Message public    ║\n");
-    printf("╚════════════════════════════════════════╝\n\n");
+    printf("\n╔═══════════════════════════════════════════╗\n");
+    printf("║          COMMANDES DISPONIBLES            ║\n");
+    printf("╠═══════════════════════════════════════════╣\n");
+    printf("║ /list                - Joueurs en ligne   ║\n");
+    printf("║ /games               - Parties en cours   ║\n");
+    printf("║ /watch <id>          - Regarder partie    ║\n");
+    printf("║ /stopwatch           - Arrêter regarder   ║\n");
+    printf("║ /challenge <nom>     - Défier joueur      ║\n");
+    printf("║ /accept <nom>        - Accepter défi      ║\n");
+    printf("║ /refuse <nom>        - Refuser défi       ║\n");
+    printf("║ /board               - Afficher plateau   ║\n");
+    printf("║ /bio                 - Définir votre bio  ║\n");
+    printf("║ /whois <nom>         - Voir bio joueur    ║\n");
+    printf("║ /history             - Parties jouées     ║\n");
+    printf("║ /replay <num>        - Revoir une partie  ║\n");
+    printf("║ /help                - Cette aide         ║\n");
+    printf("╠═══════════════════════════════════════════╣\n");
+    printf("║ Gestion des amis:                         ║\n");
+    printf("║ /addfriend <nom>     - Demande d'ami      ║\n");
+    printf("║ /acceptfriend <nom>  - Accepter demande   ║\n");
+    printf("║ /friendrequests      - Demandes reçues    ║\n");
+    printf("║ /removefriend <nom>  - Retirer un ami     ║\n");
+    printf("║ /friends             - Liste de vos amis  ║\n");
+    printf("║ /private             - Toggle mode privé  ║\n");
+    printf("║ /save                - Toggle auto-save   ║\n");
+    printf("╠═══════════════════════════════════════════╣\n");
+    printf("║ En partie:                                ║\n");
+    printf("║ /0 à /11             - Jouer une case     ║\n");
+    printf("║ /d                   - Proposer égalité   ║\n");
+    printf("║ /q                   - Abandonner         ║\n");
+    printf("╠═══════════════════════════════════════════╣\n");
+    printf("║ @<nom> <msg>         - Message privé      ║\n");
+    printf("║ <message>            - Message public     ║\n");
+    printf("╚═══════════════════════════════════════════╝\n\n");
 }
 
 static int connect_to(const char* ip, int port) {
@@ -260,6 +271,19 @@ int main(int argc, char **argv) {
                     }
                 }
             }
+            else if (!strncmp(buf, "ASKSAVE", 7)) {
+                printf("Voulez-vous sauvegarder cette partie ? (o/n): ");
+                fflush(stdout);
+                
+                char response[16];
+                if (fgets(response, sizeof(response), stdin)) {
+                    if (response[0] == 'o' || response[0] == 'O') {
+                        send(fd, "YES\n", 4, 0);
+                    } else {
+                        send(fd, "NO\n", 3, 0);
+                    }
+                }
+            }
             else if (!strncmp(buf, "MSG ", 4)) {
                 // Détecter le début/continuation de l'édition de bio (Ligne X:)
                 if (strstr(buf + 4, "Ligne ") && strstr(buf + 4, ":")) {
@@ -288,11 +312,20 @@ int main(int argc, char **argv) {
                     if (myturn && strstr(buf + 4, "invalide")) {
                         printf("Votre tour (/0-11, /d, /q ou message): ");
                         fflush(stdout);
-                    } else if (!in_game && !strstr(buf + 4, "Bienvenue") && !editing_bio) {
+                    } else if (!in_game && !editing_bio) {
                         printf("> ");
                         fflush(stdout);
                     }
                 }
+            }
+            // Affichage d'une partie rejouée
+            else if (!strncmp(buf, "REPLAY", 6)) {
+                // Afficher tout le contenu de la partie (tout est déjà dans buf après "REPLAY\n")
+                printf("\n%s\n", buf + 7);  // Afficher après "REPLAY\n"
+                if (!in_game) {
+                    printf("> ");
+                }
+                fflush(stdout);
             }
             // Message de chat
             else if (!strncmp(buf, "CHAT ", 5)) {
@@ -402,6 +435,32 @@ int main(int argc, char **argv) {
                 } else if (!strncmp(cmd, "whois ", 6)) {
                     char out[128];
                     snprintf(out, sizeof(out), "WHOIS %s\n", cmd + 6);
+                    send(fd, out, strlen(out), 0);
+                } else if (!strncmp(cmd, "addfriend ", 10)) {
+                    char out[128];
+                    snprintf(out, sizeof(out), "ADDFRIEND %s\n", cmd + 10);
+                    send(fd, out, strlen(out), 0);
+                } else if (!strncmp(cmd, "acceptfriend ", 13)) {
+                    char out[128];
+                    snprintf(out, sizeof(out), "ACCEPTFRIEND %s\n", cmd + 13);
+                    send(fd, out, strlen(out), 0);
+                } else if (!strcmp(cmd, "friendrequests") || !strcmp(cmd, "listfriendrequests")) {
+                    send(fd, "LISTFRIENDREQUESTS\n", 19, 0);
+                } else if (!strncmp(cmd, "removefriend ", 13)) {
+                    char out[128];
+                    snprintf(out, sizeof(out), "REMOVEFRIEND %s\n", cmd + 13);
+                    send(fd, out, strlen(out), 0);
+                } else if (!strcmp(cmd, "friends") || !strcmp(cmd, "listfriends")) {
+                    send(fd, "LISTFRIENDS\n", 12, 0);
+                } else if (!strcmp(cmd, "private")) {
+                    send(fd, "PRIVATE\n", 8, 0);
+                } else if (!strcmp(cmd, "save")) {
+                    send(fd, "SAVE\n", 5, 0);
+                } else if (!strcmp(cmd, "history")) {
+                    send(fd, "HISTORY\n", 8, 0);
+                } else if (!strncmp(cmd, "replay ", 7)) {
+                    char out[128];
+                    snprintf(out, sizeof(out), "REPLAY %s\n", cmd + 7);
                     send(fd, out, strlen(out), 0);
                 } else {
                     // Vérifier si c'est un chiffre pour jouer (0-11)

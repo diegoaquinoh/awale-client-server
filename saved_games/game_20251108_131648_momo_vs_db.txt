@@ -1,0 +1,8 @@
+=== PARTIE AWALE ===
+Date: Sat Nov  8 13:16:48 2025
+Joueur 1 (P1): momo
+Joueur 2 (P2): db
+Résultat: momo gagne par forfait (db déconnecté)
+Score final: momo=0, db=0
+
+=== HISTORIQUE DES COUPS (0 coups) ===

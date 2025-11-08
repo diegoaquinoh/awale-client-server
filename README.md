@@ -11,6 +11,10 @@ Jeu multijoueur Awale (Oware) en C avec architecture client-serveur. Le serveur 
 - **Matchmaking** : Système de défi entre joueurs
 - **Mode Spectateur** : Regarder les parties en cours (jusqu'à 20 spectateurs par partie)
 - **Chat** : Messagerie privée et publique (en partie et hors partie)
+- **Profils** : Chaque joueur peut définir une bio (jusqu'à 10 lignes)
+- **Système d'amis** : Ajoutez/retirez des amis et gérez votre liste
+- **Mode privé** : Limitez l'accès à vos parties aux amis uniquement
+- **Historique des parties** : Les parties peuvent être sauvegardées à la fin (sur demande) et revues plus tard
 
 ## Compilation
 
@@ -52,6 +56,20 @@ Pour un message privé, préfixez avec `@username`
 - `/board` : Afficher le plateau (en partie ou spectateur)
 - `/bio` : Définir votre bio (jusqu'à 10 lignes ASCII)
 - `/whois <username>` : Afficher la bio d'un joueur
+- `/history` : Afficher la liste des 20 dernières parties sauvegardées
+- `/replay <numéro>` : Revoir une partie sauvegardée (voir l'historique complet des coups)
+
+### Gestion des amis et modes
+
+- `/addfriend <username>` : Envoyer une demande d'ami à un joueur
+- `/acceptfriend <username>` : Accepter une demande d'ami reçue
+- `/friendrequests` : Afficher les demandes d'amis reçues
+- `/removefriend <username>` : Retirer un joueur de votre liste d'amis
+- `/friends` : Afficher votre liste d'amis
+- `/private` : Activer/désactiver le mode privé (toggle). En mode privé, seuls vos amis peuvent regarder vos parties
+- `/save` : Activer/désactiver la sauvegarde automatique (toggle). En mode sauvegarde, vos parties sont automatiquement enregistrées
+
+**Note** : Les relations d'amitié sont réciproques. Pour devenir amis, un joueur doit envoyer une demande avec `/addfriend` et l'autre doit l'accepter avec `/acceptfriend`.
 
 ### Dans le lobby (hors partie)
 
@@ -77,9 +95,15 @@ Pour un message privé, préfixez avec `@username`
 - `/board` : Réafficher le plateau
 - `<message>` : Envoyer un message aux joueurs et spectateurs de la partie
 
-### Déconnexion
+### Déconnexion et sauvegarde
 
-Si un joueur se déconnecte pendant une partie (Ctrl+C, fermeture, etc.), il perd automatiquement et son adversaire gagne par forfait. Les spectateurs sont notifiés.
+Si un joueur se déconnecte pendant une partie (Ctrl+C, fermeture, etc.), il perd automatiquement et son adversaire gagne par forfait.
+
+**Système de sauvegarde** :
+- **Mode automatique** : Activez `/save` pour que toutes vos parties soient automatiquement sauvegardées
+- **Mode manuel** : Si aucun joueur n'a activé `/save`, une demande de sauvegarde est proposée à la fin de chaque partie
+- Les parties sont enregistrées dans le dossier `saved_games/` avec un nom de fichier contenant la date, l'heure et les noms des joueurs
+- Les parties sauvegardées contiennent l'historique complet des coups et peuvent être consultées avec `/history` et `/replay`
 
 ## Règles du jeu Awale
 

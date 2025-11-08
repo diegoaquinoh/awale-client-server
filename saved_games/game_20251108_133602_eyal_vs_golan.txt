@@ -1,0 +1,12 @@
+=== PARTIE AWALE ===
+Date: Sat Nov  8 13:36:02 2025
+Joueur 1 (P1): eyal
+Joueur 2 (P2): golan
+Résultat: golan gagne
+Score final: eyal=0, golan=0
+
+=== HISTORIQUE DES COUPS (4 coups) ===
+Coup 1: eyal joue pit 5 (capture 0 graines)
+Coup 2: golan joue pit 11 (capture 0 graines)
+Coup 3: eyal joue pit 0 (capture 0 graines)
+Coup 4: golan joue pit 10 (capture 0 graines)
