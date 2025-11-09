@@ -1,3 +1,14 @@
+/*************************************************************************
+                           Awale -- Game
+                             -------------------
+    début                : 21/10/2025
+    copyright            : (C) 2025 par Mohamed et Diego
+    e-mail               : mohamed.lemseffer@insa-lyon.fr / diego.aquinoh@insa-lyon.fr / 
+
+*************************************************************************/
+
+//---------- Interface of the <net> (file net.h) ----------------
+
 #ifndef NET_H
 #define NET_H
 #include "game.h"
