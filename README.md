@@ -9,6 +9,7 @@ Jeu multijoueur Awale (Oware) en C avec architecture client-serveur. Le serveur 
 - **Jeu Awale** : Implémentation complète des règles du jeu Awale
 - **Multijoueur** : Jusqu'à 10 clients simultanés
 - **Matchmaking** : Système de défi entre joueurs
+- **Système d'ELO** : Classement des joueurs par score (victoires/défaites)
 - **Mode Spectateur** : Regarder les parties en cours (jusqu'à 20 spectateurs par partie)
 - **Chat** : Messagerie privée et publique (en partie et hors partie)
 - **Profils** : Chaque joueur peut définir une bio (jusqu'à 10 lignes)
@@ -51,7 +52,7 @@ Pour un message privé, préfixez avec `@username`
 ### Commandes globales
 
 - `/help` : Afficher la liste des commandes
-- `/list` : Afficher la liste des joueurs disponibles
+- `/list` : Afficher la liste des joueurs disponibles (classés par score ELO décroissant)
 - `/games` : Afficher la liste des parties en cours
 - `/board` : Afficher le plateau (en partie ou spectateur)
 - `/bio` : Définir votre bio (jusqu'à 10 lignes ASCII)
@@ -112,6 +113,18 @@ Le plateau comporte 12 cases (pits), 6 par joueur. Chaque case contient initiale
 - **Tour de jeu** : Le joueur choisit une case non vide de son camp et distribue les graines dans le sens horaire.
 - **Capture** : Si la dernière graine tombe dans le camp adverse et que la case contient maintenant 2 ou 3 graines, le joueur capture ces graines. La capture continue en sens inverse tant que les cases précédentes (dans le camp adverse) contiennent 2 ou 3 graines.
 - **Fin de partie** : La partie se termine quand un joueur ne peut plus jouer ou quand les deux joueurs acceptent l'égalité. Le joueur avec le plus de graines gagne.
+
+## Système d'ELO
+
+Chaque joueur commence avec un score de **100 points**.
+
+- **Victoire** : +1 point
+- **Défaite** : -1 point (minimum 0, le score ne peut pas être négatif)
+- **Égalité** : 0 point
+
+**Important** : Les parties entre amis n'affectent **pas** le score ELO. Seules les parties contre des non-amis comptent pour le classement.
+
+La commande `/list` affiche tous les joueurs disponibles triés par score décroissant, au format `username(score)`.
 
 ## File structure:
 

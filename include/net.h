@@ -38,6 +38,7 @@ typedef struct {
     int save_mode;       // Mode sauvegarde activé (1) ou non (0)
     int save_response;   // Réponse à la demande de sauvegarde: -1=pas de réponse, 0=non, 1=oui
     int game_to_save;    // Index de la partie à sauvegarder (-1 si aucune)
+    int elo_score;       // Score ELO du joueur (100 par défaut)
 } Client;
 
 int apply_move_from_pit(int player, int pit_index);

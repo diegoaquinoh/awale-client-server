@@ -311,18 +311,72 @@ static int can_spectate(int spectator_idx, Game* g) {
 }
 
 /**
- * Envoie la liste des utilisateurs en ligne à un client
+ * Met à jour les scores ELO après une partie
+ * winner: 0 pour joueur 0, 1 pour joueur 1, -1 pour égalité
+ */
+static void update_elo(Game* g, int winner) {
+    int p0_idx = g->client_indices[0];
+    int p1_idx = g->client_indices[1];
+    
+    if (p0_idx < 0 || p1_idx < 0) return;
+    
+    // Vérifier si les joueurs sont amis
+    if (is_friend(p0_idx, clients[p1_idx].username)) {
+        return;  // Pas de changement d'ELO entre amis
+    }
+    
+    // Mettre à jour les scores selon le résultat
+    if (winner == 0) {
+        // Joueur 0 gagne
+        clients[p0_idx].elo_score++;
+        if (clients[p1_idx].elo_score > 0) {
+            clients[p1_idx].elo_score--;
+        }
+    } else if (winner == 1) {
+        // Joueur 1 gagne
+        clients[p1_idx].elo_score++;
+        if (clients[p0_idx].elo_score > 0) {
+            clients[p0_idx].elo_score--;
+        }
+    }
+    // Si winner == -1 (égalité), pas de changement
+}
+
+/**
+ * Envoie la liste des utilisateurs en ligne à un client, triés par ELO décroissant
  */
 static void send_online_users(int client_idx) {
-    char msg[1024] = "USERLIST";
+    // Créer un tableau des indices de clients disponibles
+    int available[MAX_CLIENTS];
+    int count = 0;
     
     for (int i = 0; i < num_clients; i++) {
         if (i != client_idx && 
             clients[i].socket_fd > 0 && 
             clients[i].status != CLIENT_IN_GAME) {
-            strcat(msg, " ");
-            strcat(msg, clients[i].username);
+            available[count++] = i;
         }
+    }
+    
+    // Trier par ELO décroissant (bubble sort simple)
+    for (int i = 0; i < count - 1; i++) {
+        for (int j = 0; j < count - i - 1; j++) {
+            if (clients[available[j]].elo_score < clients[available[j + 1]].elo_score) {
+                int tmp = available[j];
+                available[j] = available[j + 1];
+                available[j + 1] = tmp;
+            }
+        }
+    }
+    
+    // Construire le message avec username et score ELO
+    char msg[1024] = "USERLIST";
+    for (int i = 0; i < count; i++) {
+        char entry[128];
+        snprintf(entry, sizeof(entry), " %s(%d)", 
+                 clients[available[i]].username, 
+                 clients[available[i]].elo_score);
+        strcat(msg, entry);
     }
     
     strcat(msg, "\n");
@@ -469,11 +523,11 @@ static void finalize_game_end(Game* g, int game_idx) {
         }
     }
     
-    // Réinitialiser les statuts des joueurs
+    // Réinitialiser les données de sauvegarde des joueurs (le statut est déjà CLIENT_WAITING)
     for (int i = 0; i < 2; i++) {
         int player_idx = g->client_indices[i];
         if (player_idx >= 0) {
-            clients[player_idx].status = CLIENT_WAITING;
+            // Ne pas changer le status qui est déjà CLIENT_WAITING
             clients[player_idx].save_response = -1;
             clients[player_idx].game_to_save = -1;
         }
@@ -489,15 +543,26 @@ static void finalize_game_end(Game* g, int game_idx) {
  * Termine une partie et notifie les spectateurs (version non-bloquante)
  */
 static void end_game(Game* g, const char* end_message, int game_idx) {
-    // Déterminer le résultat pour la sauvegarde
+    // Déterminer le résultat pour la sauvegarde et mettre à jour les ELO
+    int winner = -1;  // -1 pour égalité, 0 ou 1 pour les joueurs
+    
     if (strstr(end_message, "draw")) {
         snprintf(g->end_result, sizeof(g->end_result), "Égalité");
+        winner = -1;
     } else if (strstr(end_message, "winner 0")) {
         snprintf(g->end_result, sizeof(g->end_result), "%s gagne", g->player_names[0]);
+        winner = 0;
     } else if (strstr(end_message, "winner 1")) {
         snprintf(g->end_result, sizeof(g->end_result), "%s gagne", g->player_names[1]);
+        winner = 1;
     } else {
         snprintf(g->end_result, sizeof(g->end_result), "Partie interrompue");
+        winner = -1;  // Pas de changement d'ELO pour interruption
+    }
+    
+    // Mettre à jour les scores ELO (sauf si interrompu)
+    if (!strstr(end_message, "interrompu") && !strstr(end_message, "forfait") && !strstr(end_message, "déconnecté")) {
+        update_elo(g, winner);
     }
     
     // Vérifier si au moins un joueur a le mode sauvegarde activé
@@ -656,6 +721,7 @@ int main() {
                     clients[num_clients].save_mode = 0;
                     clients[num_clients].save_response = -1;
                     clients[num_clients].game_to_save = -1;
+                    clients[num_clients].elo_score = 100;  // Score ELO initial
                     
                     // Demander le username (non bloquant)
                     send_line(new_fd, "REGISTER\n");
@@ -847,10 +913,15 @@ int main() {
                     clients[i].save_response = 0;
                 }
                 
-                // Vérifier si on a reçu toutes les réponses
+                // Enregistrer la réponse dans la partie
                 int game_idx = clients[i].game_to_save;
                 if (game_idx >= 0 && game_idx < MAX_CLIENTS / 2 && games[game_idx].ending) {
                     games[game_idx].responses_received++;
+                    
+                    // Libérer immédiatement ce joueur
+                    clients[i].status = CLIENT_WAITING;
+                    clients[i].game_to_save = -1;
+                    send_line(clients[i].socket_fd, "MSG Réponse enregistrée.\n");
                     
                     // Compter combien de joueurs sont encore connectés
                     int connected_players = 0;
