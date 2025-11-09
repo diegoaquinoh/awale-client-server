@@ -1,8 +1,0 @@
-=== PARTIE AWALE ===
-Date: Sun Nov  9 12:43:08 2025
-Joueur 1 (P1): momo
-Joueur 2 (P2): eyal
-Résultat: eyal gagne
-Score final: momo=0, eyal=0
-
-=== HISTORIQUE DES COUPS (0 coups) ===
