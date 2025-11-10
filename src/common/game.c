@@ -8,7 +8,6 @@ char scores[2];
 char current_player;
 char game_over = 0;
 
-
 enum {PROPOSITION_DRAW = -1};
 enum {DRAW = 0, CONTINUE = 1};
 
@@ -20,7 +19,9 @@ int main(void)
 }
 #endif
 
-
+/**
+ * Initialise le plateau de jeu
+ */
 void init_game()
 {
     for (int i = 0; i < 12; i++)
@@ -34,6 +35,9 @@ void init_game()
     display_board();
 }
 
+/**
+ * Affiche le plateau de jeu
+ */
 void display_board()
 {
     printf("\n");
@@ -71,13 +75,15 @@ void display_board()
     printf("\n");
 }
 
-
+/**
+ * Joue un tour pour un joueur
+ */
 char play_turn(char player)
 {
     char last_pit_index = move(player);
     if (last_pit_index == PROPOSITION_DRAW)
     {
-        return DRAW; // Draw proposed and accepted
+        return DRAW;
     }
     char new_score = collect_seeds(player, last_pit_index);
     scores[player] += new_score;
@@ -86,6 +92,9 @@ char play_turn(char player)
     return CONTINUE;
 }
 
+/**
+ * Collecte les graines selon les règles de capture
+ */
 char collect_seeds(char player, char last_pit_index)
 {
     if (((player == 0) && (last_pit_index >= 6 && last_pit_index <= 11) ||
@@ -100,6 +109,9 @@ char collect_seeds(char player, char last_pit_index)
     return 0;
 }
 
+/**
+ * Effectue un mouvement pour un joueur
+ */
 char move(char player)
 {
     char is_valid = 0;
@@ -119,14 +131,12 @@ char move(char player)
                 return PROPOSITION_DRAW;
             }
             continue;
-            
         }
         if ((player == 0 && (pit_index < 0 || pit_index > 5)) ||
             (player == 1 && (pit_index < 6 || pit_index > 11)) ||
             board[pit_index] == 0)
         {
             printf("Invalid move. Try again.\n");
-
             is_valid = 0;
         }
         else
@@ -149,26 +159,29 @@ char move(char player)
         }
     }
     return index;
-
-    // Capture logic can be added here
 }
 
+/**
+ * Change le joueur actuel
+ */
 void switch_player()
 {
     current_player = 1 - current_player;
 }
 
+/**
+ * Vérifie si la partie est terminée
+ */
 char is_game_over(char continued)
 {
-
     if (continued == DRAW)
     {
         return 1;
     }
-    // TODO: implement more conditions for game over
+    
     int side1_empty = 1;
     int side2_empty = 1;
-    // 3 cases: side 1 empty, side 2 empty,
+    
     for (int i = 0; i < 6; i++)
     {
         if (board[i] > 0)
@@ -195,6 +208,9 @@ char is_game_over(char continued)
     return game_over;
 }
 
+/**
+ * Collecte les graines restantes à la fin de la partie
+ */
 void collect_remaining_seeds(char continued)
 {
     if (continued == DRAW)
@@ -208,6 +224,9 @@ void collect_remaining_seeds(char continued)
     }
 }
 
+/**
+ * Affiche le résultat final de la partie
+ */
 void declare_winner(char continued)
 {
     printf("Final Scores:\n");
@@ -233,6 +252,9 @@ void declare_winner(char continued)
     }
 }
 
+/**
+ * Propose un match nul à l'adversaire
+ */
 char proposition_draw(char player)
 {
     char response;
@@ -241,6 +263,9 @@ char proposition_draw(char player)
     return response == '1';
 }
 
+/**
+ * Boucle principale du jeu
+ */
 void game_loop()
 {
     init_game();
