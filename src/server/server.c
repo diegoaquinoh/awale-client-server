@@ -195,6 +195,15 @@ static int find_client_by_username(const char* username) {
     return -1;
 }
 
+static int find_client_by_username_any(const char* username) {
+    for (int i = 0; i < num_clients; i++) {
+        if (clients[i].username[0] != '\0' && strcmp(clients[i].username, username) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 /**
  * Vérifie si un joueur est dans la liste d'amis d'un autre
  */
@@ -872,32 +881,56 @@ int main() {
                         continue;
                     }
                     
-                    // Vérifier si le username est déjà pris
-                    int username_taken = 0;
-                    for (int j = 0; j < num_clients; j++) {
-                        if (j != i && clients[j].socket_fd > 0 && strcmp(clients[j].username, username) == 0) {
-                            username_taken = 1;
-                            break;
-                        }
-                    }
+                    // Chercher si ce username existe déjà (connecté ou non)
+                    int existing_idx = find_client_by_username_any(username);
+                    int connected_idx = find_client_by_username(username);
                     
-                    if (username_taken) {
-                        send_line(clients[i].socket_fd, "MSG Username déjà pris. Déconnexion.\n");
+                    // Si le username est déjà connecté ailleurs
+                    if (connected_idx != -1) {
+                        send_line(clients[i].socket_fd, "MSG Username déjà connecté. Déconnexion.\n");
                         close(clients[i].socket_fd);
                         clients[i].socket_fd = -1;
-                        printf("Connexion refusée: username '%s' déjà pris\n", username);
+                        printf("Connexion refusée: username '%s' déjà connecté\n", username);
                         continue;
                     }
                     
-                    // Username valide, enregistrer
-                    strcpy(clients[i].username, username);
-                    clients[i].status = CLIENT_WAITING;
-                    
-                    char welcome[128];
-                    snprintf(welcome, sizeof(welcome), "MSG Bienvenue %s! Tapez '/list' pour voir les joueurs disponibles.\n", username);
-                    send_line(clients[i].socket_fd, welcome);
-                    
-                    printf("Client connecté: %s\n", username);
+                    // Si le username existe déjà (reconnexion)
+                    if (existing_idx != -1 && existing_idx != i) {
+                        // Copier les données de l'ancien slot vers le nouveau
+                        clients[i].elo_score = clients[existing_idx].elo_score;
+                        clients[i].num_friends = clients[existing_idx].num_friends;
+                        clients[i].num_friend_requests = clients[existing_idx].num_friend_requests;
+                        clients[i].bio_lines = clients[existing_idx].bio_lines;
+                        clients[i].private_mode = clients[existing_idx].private_mode;
+                        clients[i].save_mode = clients[existing_idx].save_mode;
+                        
+                        memcpy(clients[i].friends, clients[existing_idx].friends, sizeof(clients[i].friends));
+                        memcpy(clients[i].friend_requests, clients[existing_idx].friend_requests, sizeof(clients[i].friend_requests));
+                        memcpy(clients[i].bio, clients[existing_idx].bio, sizeof(clients[i].bio));
+                        
+                        // Effacer l'ancien slot (devenu obsolète)
+                        clients[existing_idx].username[0] = '\0';
+                        
+                        strcpy(clients[i].username, username);
+                        clients[i].status = CLIENT_WAITING;
+                        
+                        char welcome[128];
+                        snprintf(welcome, sizeof(welcome), "MSG Bon retour %s! (ELO: %d)\n", username, clients[i].elo_score);
+                        send_line(clients[i].socket_fd, welcome);
+                        
+                        printf("Client reconnecté: %s (ELO: %d)\n", username, clients[i].elo_score);
+                    }
+                    // Nouveau username
+                    else {
+                        strcpy(clients[i].username, username);
+                        clients[i].status = CLIENT_WAITING;
+                        
+                        char welcome[128];
+                        snprintf(welcome, sizeof(welcome), "MSG Bienvenue %s! Tapez '/list' pour voir les joueurs disponibles.\n", username);
+                        send_line(clients[i].socket_fd, welcome);
+                        
+                        printf("Nouveau client connecté: %s\n", username);
+                    }
                 } else {
                     // Message inattendu, ignorer
                     send_line(clients[i].socket_fd, "MSG Veuillez envoyer votre username avec 'USERNAME <nom>'.\n");
