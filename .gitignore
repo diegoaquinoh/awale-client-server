@@ -6,20 +6,6 @@ saved_games/
 
 # Fichiers objets
 *.o
-*.a
-*.so
-
-# Fichiers temporaires
-*~
-*.swp
-*.swo
-
-# Fichiers de debug
-*.dSYM/
-*.gdb_history
-core
 
 # IDE
 .vscode/
-.idea/
-*.code-workspace
