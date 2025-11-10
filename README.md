@@ -514,4 +514,4 @@ Ce projet est développé dans le cadre d'un projet académique.
 ## 👥 Contributeurs
 
 - [@diegoaquinoh](https://github.com/diegoaquinoh)
-- Autres contributeurs...
+- [@mlemseffer](https://github.com/mlemseffer)
