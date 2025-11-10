@@ -1,29 +1,64 @@
-# awale-client-server
+# 🎮 Awale Client-Serveur
 
-## Description
+> Jeu multijoueur **Awale (Oware)** en C avec architecture client-serveur TCP
 
-Jeu multijoueur Awale (Oware) en C avec architecture client-serveur. Le serveur gère plusieurs parties simultanées, un système de matchmaking, et un mode spectateur.
+![Language](https://img.shields.io/badge/language-C-blue.svg)
+![Network](https://img.shields.io/badge/network-TCP%2FIP-green.svg)
 
-## Fonctionnalités
+---
 
-- **Jeu Awale** : Implémentation complète des règles du jeu Awale
-- **Multijoueur** : Jusqu'à 10 clients simultanés
-- **Matchmaking** : Système de défi entre joueurs
-- **Système d'ELO** : Classement des joueurs par score (victoires/défaites)
-- **Mode Spectateur** : Regarder les parties en cours (jusqu'à 20 spectateurs par partie)
-- **Chat** : Messagerie privée et publique (en partie et hors partie)
-- **Profils** : Chaque joueur peut définir une bio (jusqu'à 10 lignes)
-- **Système d'amis** : Ajoutez/retirez des amis et gérez votre liste
-- **Mode privé** : Limitez l'accès à vos parties aux amis uniquement
-- **Historique des parties** : Les parties peuvent être sauvegardées à la fin (sur demande) et revues plus tard
+## 📝 Description
 
-## Compilation
+Implémentation complète du jeu traditionnel Awale avec une architecture réseau robuste. Le serveur gère plusieurs parties simultanées, un système de matchmaking, un classement ELO, et permet aux spectateurs de regarder les parties en cours.
+
+### ✨ Fonctionnalités Principales
+
+#### 🎯 Jeu & Matchmaking
+- **Règles complètes du jeu Awale** avec validation serveur
+- **Système de défis** entre joueurs
+- **Multijoueur** : Jusqu'à 100 clients simultanés
+- **Mode spectateur** : Jusqu'à 10 spectateurs par partie
+
+#### 📊 Système de Classement
+- **Score ELO** : Classement dynamique des joueurs
+- Points gagnés/perdus selon victoires/défaites
+- Parties entre amis **n'affectent pas l'ELO**
+
+#### 👥 Fonctionnalités Sociales
+- **Système d'amis** : Demandes, acceptation, gestion de liste
+- **Chat en temps réel** : Messages publics et privés
+- **Profils personnalisés** : Bio de 10 lignes max
+- **Mode privé** : Parties visibles uniquement par vos amis
+
+#### 💾 Persistance & Historique
+- **Sauvegarde des parties** (manuelle ou automatique)
+- **Replay complet** : Historique des 200 derniers coups
+- **Reconnexion** : Retrouvez vos données (ELO, amis) après déconnexion
+
+#### 🎨 Interface Client
+- **Affichage en couleurs** (ANSI)
+- **Saisie non-bloquante** : Les messages entrants ne coupent pas votre texte
+- **Interface intuitive** avec aide intégrée
+
+---
+
+## 🚀 Installation & Utilisation
+
+### Prérequis
+
+- **Compilateur C** (gcc, clang)
+- **Make**
+- **Linux/macOS** (ou WSL sur Windows)
+
+### Compilation
 
 ```bash
 make
 ```
 
-## Utilisation
+Les binaires sont générés dans `bin/` :
+- `bin/server` - Serveur de jeu
+- `bin/client` - Client joueur
 
 ### Lancer le serveur
 
@@ -31,135 +66,452 @@ make
 ./bin/server
 ```
 
-Le serveur écoute sur le port 4321.
+Le serveur démarre sur **port 4321** et affiche :
+```
+Server on 4321
+```
 
 ### Lancer un client
 
+#### En local (même machine)
 ```bash
-./bin/client <ip> <port>
+./bin/client 127.0.0.1 4321
 ```
 
-Le client se connecte au serveur (localhost:4321) et vous demande votre nom d'utilisateur.
+#### Sur le réseau
+```bash
+./bin/client <IP_DU_SERVEUR> 4321
+```
 
-## Commandes disponibles
+**Exemple :** Si le serveur est sur `192.168.1.100` :
+```bash
+./bin/client 192.168.1.100 4321
+```
 
-### Syntaxe générale
+#### Première connexion
 
-**Par défaut, tout ce que vous tapez est envoyé comme message de chat.**  
-Pour exécuter une commande, préfixez-la avec `/`  
-Pour un message privé, préfixez avec `@username`
+Lors de la connexion, entrez votre **nom d'utilisateur** :
+- Minimum 2 caractères
+- Lettres, chiffres, `_` ou `-` uniquement
+- Unique (pas de doublon)
 
-### Commandes globales
+---
 
-- `/help` : Afficher la liste des commandes
-- `/list` : Afficher la liste des joueurs disponibles (classés par score ELO décroissant)
-- `/games` : Afficher la liste des parties en cours
-- `/board` : Afficher le plateau (en partie ou spectateur)
-- `/bio` : Définir votre bio (jusqu'à 10 lignes ASCII)
-- `/whois <username>` : Afficher la bio d'un joueur
-- `/history` : Afficher la liste des 20 dernières parties sauvegardées
-- `/replay <numéro>` : Revoir une partie sauvegardée (voir l'historique complet des coups)
+## 🕹️ Jouer sur 2 Machines Différentes
 
-### Gestion des amis et modes
+### Sur la machine SERVEUR
 
-- `/addfriend <username>` : Envoyer une demande d'ami à un joueur
-- `/acceptfriend <username>` : Accepter une demande d'ami reçue
-- `/friendrequests` : Afficher les demandes d'amis reçues
-- `/removefriend <username>` : Retirer un joueur de votre liste d'amis
-- `/friends` : Afficher votre liste d'amis
-- `/private` : Activer/désactiver le mode privé (toggle). En mode privé, seuls vos amis peuvent regarder vos parties
-- `/save` : Activer/désactiver la sauvegarde automatique (toggle). En mode sauvegarde, vos parties sont automatiquement enregistrées
+1. **Lancer le serveur** :
+   ```bash
+   ./bin/server
+   ```
 
-**Note** : Les relations d'amitié sont réciproques. Pour devenir amis, un joueur doit envoyer une demande avec `/addfriend` et l'autre doit l'accepter avec `/acceptfriend`.
+2. **Trouver l'IP du serveur** :
+   ```bash
+   hostname -I
+   ```
+   Exemple de résultat : `192.168.1.100`
 
-### Dans le lobby (hors partie)
+3. **Ouvrir le pare-feu** (si nécessaire) :
+   ```bash
+   sudo ufw allow 4321/tcp
+   ```
 
-- `/challenge <username>` : Défier un joueur
-- `/accept <username>` : Accepter un défi
-- `/refuse <username>` : Refuser un défi
-- `/watch <game_id>` : Regarder une partie en cours (mode spectateur)
-- `@<username> <message>` : Message privé
-- `<message>` : Envoyer un message à tous les joueurs en ligne
+### Sur la machine CLIENT
 
-### En partie
+```bash
+./bin/client 192.168.1.100 4321
+```
 
-- `/0` à `/11` : Jouer un coup (numéro du pit de 0 à 11)
-- `/d` : Proposer l'égalité
-- `/q` : Abandonner (forfait)
-- `/board` : Réafficher le plateau
-- `@<username> <message>` : Message privé
-- `<message>` : Envoyer un message à l'adversaire et aux spectateurs
+Remplacez `192.168.1.100` par l'IP réelle du serveur.
 
-### En mode spectateur
+---
 
-- `/stopwatch` : Quitter le mode spectateur
-- `/board` : Réafficher le plateau
-- `<message>` : Envoyer un message aux joueurs et spectateurs de la partie
+## 📖 Guide des Commandes
 
-### Déconnexion et sauvegarde
+### 💬 Syntaxe Générale
 
-Si un joueur se déconnecte pendant une partie (Ctrl+C, fermeture, etc.), il perd automatiquement et son adversaire gagne par forfait.
+| Syntaxe | Action |
+|---------|--------|
+| `<texte>` | Message de chat (contexte dépendant) |
+| `/<commande>` | Exécuter une commande |
+| `@<username> <message>` | Message privé |
 
-**Système de sauvegarde** :
-- **Mode automatique** : Activez `/save` pour que toutes vos parties soient automatiquement sauvegardées
-- **Mode manuel** : Si aucun joueur n'a activé `/save`, une demande de sauvegarde est proposée à la fin de chaque partie
-- Les parties sont enregistrées dans le dossier `saved_games/` avec un nom de fichier contenant la date, l'heure et les noms des joueurs
-- Les parties sauvegardées contiennent l'historique complet des coups et peuvent être consultées avec `/history` et `/replay`
+### 🌐 Commandes Globales
 
-## Règles du jeu Awale
+| Commande | Description |
+|----------|-------------|
+| `/help` | Afficher l'aide complète |
+| `/list` | Liste des joueurs (triés par ELO ↓) |
+| `/games` | Liste des parties en cours |
+| `/board` | Afficher le plateau de jeu |
 
-Le plateau comporte 12 cases (pits), 6 par joueur. Chaque case contient initialement 4 graines.
+### 👤 Profil & Social
 
-- **Tour de jeu** : Le joueur choisit une case non vide de son camp et distribue les graines dans le sens horaire.
-- **Capture** : Si la dernière graine tombe dans le camp adverse et que la case contient maintenant 2 ou 3 graines, le joueur capture ces graines. La capture continue en sens inverse tant que les cases précédentes (dans le camp adverse) contiennent 2 ou 3 graines.
-- **Fin de partie** : La partie se termine quand un joueur ne peut plus jouer ou quand les deux joueurs acceptent l'égalité. Le joueur avec le plus de graines gagne.
+| Commande | Description |
+|----------|-------------|
+| `/bio` | Éditer votre bio (10 lignes max) |
+| `/whois <username>` | Voir la bio d'un joueur |
+| `/addfriend <username>` | Envoyer une demande d'ami |
+| `/acceptfriend <username>` | Accepter une demande d'ami |
+| `/friendrequests` | Voir les demandes reçues |
+| `/removefriend <username>` | Retirer un ami |
+| `/friends` | Afficher votre liste d'amis |
 
-## Système d'ELO
+### ⚙️ Modes & Paramètres
 
-Chaque joueur commence avec un score de **100 points**.
+| Commande | Description |
+|----------|-------------|
+| `/private` | Toggle mode privé (parties visibles amis uniquement) |
+| `/save` | Toggle sauvegarde automatique des parties |
 
-- **Victoire** : +1 point
-- **Défaite** : -1 point (minimum 0, le score ne peut pas être négatif)
-- **Égalité** : 0 point
+### 🎮 Lobby (Hors Partie)
 
-**Important** : Les parties entre amis n'affectent **pas** le score ELO. Seules les parties contre des non-amis comptent pour le classement.
+| Commande | Description |
+|----------|-------------|
+| `/challenge <username>` | Défier un joueur |
+| `/accept <username>` | Accepter un défi |
+| `/refuse <username>` | Refuser un défi |
+| `/watch <id>` | Regarder la partie `<id>` (spectateur) |
+| `<message>` | Message public (tous les joueurs en ligne) |
+| `@<username> <msg>` | Message privé |
 
-La commande `/list` affiche tous les joueurs disponibles triés par score décroissant, au format `username(score)`.
+### 🕹️ En Partie
 
-## File structure:
+| Commande | Description |
+|----------|-------------|
+| `/0` à `/11` | Jouer un coup (numéro de case) |
+| `/d` | Proposer l'égalité à l'adversaire |
+| `/q` | Abandonner (forfait) |
+| `/board` | Réafficher le plateau |
+| `<message>` | Message à l'adversaire et spectateurs |
+| `@<username> <msg>` | Message privé |
 
-game-c-client-server/
-├─ README.md
-├─ Makefile
-├─ .gitignore
-├─ include/
-│  ├─ protocol.h        # message types, wire format
-│  ├─ net.h             # socket helpers
-│  └─ game.h            # game state & logic API
-├─ src/
-│  ├─ common/
-│  │  ├─ protocol.c
-│  │  ├─ net.c
-│  │  └─ game.c
-│  ├─ server/
-│  │  └─ server.c       # main() for server
-│  └─ client/
-│     └─ client.c       # main() for client
-└─ assets/              # optional (maps, sprites, etc. if any)
+### 👁️ Mode Spectateur
 
+| Commande | Description |
+|----------|-------------|
+| `/stopwatch` | Quitter le mode spectateur |
+| `/board` | Réafficher le plateau |
+| `<message>` | Message aux joueurs et spectateurs |
 
-##git:
+### 📜 Historique des Parties
 
+| Commande | Description |
+|----------|-------------|
+| `/history` | Liste des 20 dernières parties sauvegardées |
+| `/replay <numéro>` | Revoir une partie (historique complet) |
+
+---
+
+## 💾 Système de Sauvegarde
+
+### Modes de Sauvegarde
+
+#### 🔄 Mode Automatique
+```bash
+/save  # Toggle ON/OFF
+```
+- Toutes vos parties sont automatiquement sauvegardées
+- Pas de question posée à la fin
+- Pratique pour les joueurs réguliers
+
+#### 🤔 Mode Manuel (par défaut)
+- À la fin de chaque partie, demande : **"Sauvegarder cette partie ? (o/n)"**
+- Partie sauvegardée si **au moins un joueur** répond "oui"
+- Utile pour ne garder que les parties importantes
+
+### Format des Fichiers
+
+Les parties sont sauvegardées dans `saved_games/` :
+```
+game_20251110_143022_Alice_vs_Bob.txt
+```
+
+**Contenu :**
+- Métadonnées (date, joueurs, résultat)
+- Scores finaux
+- **Historique complet** des 200 derniers coups
+- Graines capturées à chaque coup
+
+### Déconnexion en Partie
+
+**Si un joueur se déconnecte :**
+- L'adversaire **gagne par forfait**
+- Notification immédiate : `"<Joueur> s'est déconnecté. Vous gagnez!"`
+- Si `/save` actif → sauvegarde automatique
+- Sinon → demande de sauvegarde à l'adversaire restant
+
+---
+
+## 🎲 Règles du Jeu Awale
+
+### Plateau Initial
+
+```
+      P2 (adversaire)
+  11  10   9   8   7   6
+[ 4][ 4][ 4][ 4][ 4][ 4]
+[ 4][ 4][ 4][ 4][ 4][ 4]
+   0   1   2   3   4   5
+      P1 (vous)
+```
+
+Chaque case contient **4 graines** au départ (48 graines total).
+
+### Déroulement d'un Tour
+
+1. **Choisir une case** de votre camp (0-5 pour P1, 6-11 pour P2)
+2. **Distribuer les graines** dans le sens anti-horaire (←)
+3. **Capturer** si la dernière graine tombe dans le camp adverse :
+   - Si la case contient maintenant **2 ou 3 graines** → capture
+   - Continue de capturer les cases précédentes tant qu'elles ont 2-3 graines
+
+### Conditions de Victoire
+
+- **Majorité** : Le joueur avec **le plus de graines capturées** gagne
+- **Égalité** : Si 24-24 (ou accord mutuel avec `/d`)
+- **Forfait** : Si l'adversaire abandonne (`/q`) ou se déconnecte
+
+### Fin de Partie
+
+La partie se termine quand :
+- Un joueur ne peut plus jouer (cases vides)
+- Les deux joueurs acceptent l'égalité
+- Un joueur abandonne
+
+---
+
+## 📊 Système de Classement ELO
+
+### Score Initial
+
+Chaque nouveau joueur commence avec **100 points ELO**.
+
+### Gains & Pertes
+
+| Résultat | Variation ELO |
+|----------|---------------|
+| **Victoire** | +1 point |
+| **Défaite** | -1 point (minimum 0) |
+| **Égalité** | 0 point |
+
+### Règle Importante : Parties Entre Amis
+
+🔒 **Les parties contre un ami N'AFFECTENT PAS l'ELO**
+
+- Seules les parties contre des **non-amis** comptent pour le classement
+- Permet de jouer librement avec vos amis sans risque
+- Encouragez les matchs compétitifs avec des inconnus
+
+### Affichage du Classement
+
+```bash
+/list
+```
+
+**Résultat** (trié par ELO décroissant) :
+```
+=== Joueurs disponibles ===
+  • Alice(150)
+  • Bob(120)
+  • Charlie(100)
+  • David(95)
+===========================
+```
+
+---
+
+## 🔄 Système de Reconnexion
+
+### Données Persistantes
+
+Si vous vous déconnectez puis reconnectez (serveur toujours actif), vous retrouvez :
+
+- ✅ **Score ELO**
+- ✅ **Liste d'amis**
+- ✅ **Demandes d'amis en attente**
+- ✅ **Votre bio**
+- ✅ **Modes activés** (privé, sauvegarde)
+
+### Reconnexion
+
+```bash
+./bin/client 127.0.0.1 4321
+# Entrez le MÊME username
+```
+
+**Message de bienvenue :**
+```
+Bon retour Alice! (ELO: 150)
+```
+
+### Limitation
+
+⚠️ **Données perdues si le serveur redémarre** (pas de persistance sur disque)
+
+---
+
+## 🏗️ Architecture & Structure
+
+### Architecture Réseau
+
+```
+┌─────────────┐
+│   Client 1  │──┐
+└─────────────┘  │
+                 │
+┌─────────────┐  │    ┌──────────────┐
+│   Client 2  │──┼───→│   SERVEUR    │
+└─────────────┘  │    │  (port 4321) │
+                 │    └──────────────┘
+┌─────────────┐  │
+│   Client N  │──┘
+└─────────────┘
+```
+
+**Protocole** : TCP/IP (connexion fiable)  
+**Multiplexage** : `select()` (gestion concurrente de 100+ clients)  
+**Autorité** : Le serveur valide tous les coups (anti-triche)
+
+### Structure des Fichiers
+
+```
+awale-client-server/
+├── README.md              # Ce fichier
+├── Makefile               # Compilation
+├── .gitignore             # Fichiers ignorés par git
+│
+├── include/               # Headers (.h)
+│   ├── game.h            # Logique du jeu Awale
+│   └── net.h             # Utilitaires réseau
+│
+├── src/
+│   ├── common/           # Code partagé
+│   │   ├── game.c       # Implémentation des règles
+│   │   └── net.c        # Fonctions réseau
+│   │
+│   ├── server/
+│   │   └── server.c     # Main du serveur
+│   │
+│   └── client/
+│       └── client.c     # Main du client
+│
+├── bin/                  # Binaires (ignoré par git)
+│   ├── server
+│   └── client
+│
+└── saved_games/          # Parties sauvegardées (ignoré par git)
+    └── game_*.txt
+```
+
+### Séparation des Responsabilités
+
+| Fichier | Responsabilité |
+|---------|----------------|
+| **`game.h/c`** | Règles du jeu, validation des coups |
+| **`net.h/c`** | Communication réseau (sockets, messages) |
+| **`server.c`** | Gestion des clients, parties, matchmaking |
+| **`client.c`** | Interface utilisateur, affichage, saisie |
+
+---
+
+## 🔧 Commandes Make
+
+```bash
+make           # Compiler le serveur et le client
+make clean     # Supprimer les binaires
+make server    # Compiler uniquement le serveur
+make client    # Compiler uniquement le client
+```
+
+---
+
+## 🐛 Développement & Git
+
+### Workflow Git
+
+```bash
+# Vérifier le statut
+git status
+
+# Ajouter les modifications
 git add .
-git commit -m "commentaire du commit"
-git push
 
-si il y a eu des push sur main :
+# Commiter avec un message
+git commit -m "Description des changements"
+
+# Pousser sur GitHub
+git push
+```
+
+### En cas de conflits
+
+```bash
+# Récupérer les dernières modifications
 git pull
+
+# Si conflits détectés
+git status  # Voir les fichiers en conflit
+
+# Résoudre dans VS Code (interface graphique)
+# Puis valider la résolution
+git add .
+git commit -m "Résolution des conflits"
 git push
+```
 
-si conflits
+### Branches (recommandé)
 
-git merge 
+```bash
+# Créer une branche pour une feature
+git checkout -b feature/nouvelle-fonctionnalite
 
-et puis tu ouvres vscode , git et tu resous les conflits et valides et commit (tout sur interface vscode)
+# Travailler sur la branche
+git add .
+git commit -m "Ajout de la fonctionnalité X"
+git push origin feature/nouvelle-fonctionnalite
+
+# Fusionner dans main (via Pull Request sur GitHub)
+```
+
+---
+
+## 📚 Concepts de Programmation Réseau
+
+### Points Clés
+
+| Concept | Implémentation |
+|---------|----------------|
+| **TCP vs UDP** | TCP pour garantir ordre & fiabilité |
+| **`select()`** | Multiplexage I/O (1 thread, N clients) |
+| **Protocole textuel** | Messages terminés par `\n` (facile à déboguer) |
+| **Autorité serveur** | Validation côté serveur (anti-triche) |
+| **Non-bloquant** | Saisie client sans blocage sur messages entrants |
+
+### Questions Fréquentes
+
+**Q: Pourquoi `select()` et pas threads ?**  
+R: Plus simple, pas de race conditions, suffisant pour <100 clients
+
+**Q: Comment détecter une déconnexion ?**  
+R: `recv()` retourne 0 → client déconnecté
+
+**Q: Pourquoi un protocole textuel ?**  
+R: Facile à déboguer (`telnet localhost 4321`), suffisant pour Awale
+
+**Q: Comment gérer 2 joueurs qui jouent en même temps ?**  
+R: `select()` traite séquentiellement → le serveur rejette le 2e coup
+
+---
+
+## 📄 Licence
+
+Ce projet est développé dans le cadre d'un projet académique.
+
+---
+
+## 👥 Contributeurs
+
+- [@diegoaquinoh](https://github.com/diegoaquinoh)
+- Autres contributeurs...
