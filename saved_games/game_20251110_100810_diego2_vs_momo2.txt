@@ -1,9 +1,0 @@
-=== PARTIE AWALE ===
-Date: Mon Nov 10 10:08:10 2025
-Joueur 1 (P1): diego2
-Joueur 2 (P2): momo2
-Résultat: diego2 gagne par forfait (momo2 déconnecté)
-Score final: diego2=0, momo2=0
-
-=== HISTORIQUE DES COUPS (1 coups) ===
-Coup 1: diego2 joue pit 0 (capture 0 graines)
