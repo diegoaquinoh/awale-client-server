@@ -36,7 +36,7 @@ Le serveur écoute sur le port 4321.
 ### Lancer un client
 
 ```bash
-./bin/client
+./bin/client <ip> <port>
 ```
 
 Le client se connecte au serveur (localhost:4321) et vous demande votre nom d'utilisateur.
