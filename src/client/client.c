@@ -1,3 +1,13 @@
+/*************************************************************************
+                           Awale -- Game
+                             -------------------
+    début                : 21/10/2025
+    copyright            : (C) 2025 par Mohamed et Diego
+    e-mail               : mohamed.lemseffer@insa-lyon.fr / diego.aquinoh@insa-lyon.fr / 
+
+*************************************************************************/
+
+
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <unistd.h>
@@ -23,19 +33,16 @@
 static char input_buffer[256] = "";
 static int input_pos = 0;
 
-// Fonction pour effacer la ligne actuelle
 static void clear_current_line(void) {
     printf("\r\033[K");
     fflush(stdout);
 }
 
-// Fonction pour réafficher le prompt et le buffer actuel
 static void redisplay_prompt(const char* prompt) {
     printf("%s%s", prompt, input_buffer);
     fflush(stdout);
 }
 
-// Fonction helper pour afficher un prompt et réafficher la saisie en cours
 static void show_prompt(void) {
     printf(COLOR_BLUE "> " COLOR_RESET);
     redisplay_prompt("");

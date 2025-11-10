@@ -54,4 +54,4 @@ typedef struct {
 
 int apply_move_from_pit(int player, int pit_index);
 
-#endif
+#endif // NET_H
