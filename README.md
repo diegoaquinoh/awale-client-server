@@ -3,7 +3,6 @@
 > Jeu multijoueur **Awale (Oware)** en C avec architecture client-serveur TCP
 
 ![Language](https://img.shields.io/badge/language-C-blue.svg)
-![Network](https://img.shields.io/badge/network-TCP%2FIP-green.svg)
 
 ---
 
