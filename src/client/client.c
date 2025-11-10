@@ -5,6 +5,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/select.h>
+#include <termios.h>
+#include <fcntl.h>
 
 // Codes de couleur ANSI (versions sombres)
 #define COLOR_RESET   "\033[0m"
@@ -16,6 +18,28 @@
 #define COLOR_WHITE   "\033[37m"
 #define COLOR_BROWN   "\033[38;5;94m"
 #define COLOR_BOLD    "\033[1m"
+
+// Buffer global pour la saisie utilisateur
+static char input_buffer[256] = "";
+static int input_pos = 0;
+
+// Fonction pour effacer la ligne actuelle
+static void clear_current_line(void) {
+    printf("\r\033[K");
+    fflush(stdout);
+}
+
+// Fonction pour réafficher le prompt et le buffer actuel
+static void redisplay_prompt(const char* prompt) {
+    printf("%s%s", prompt, input_buffer);
+    fflush(stdout);
+}
+
+// Fonction helper pour afficher un prompt et réafficher la saisie en cours
+static void show_prompt(void) {
+    printf(COLOR_BLUE "> " COLOR_RESET);
+    redisplay_prompt("");
+}
 
 static void print_help(void) {
     printf("\n" COLOR_MAGENTA "╔═══════════════════════════════════════════╗\n");
@@ -162,6 +186,7 @@ int main(int argc, char **argv) {
     
     printf(COLOR_GREEN "✓ Connexion au serveur...\n" COLOR_RESET);
     print_help();
+    show_prompt();  // Afficher le prompt initial
     
     while (1) {
         fd_set rfds;
@@ -177,6 +202,11 @@ int main(int argc, char **argv) {
         
         // Message du serveur
         if (FD_ISSET(fd, &rfds)) {
+            // Effacer la ligne courante si on est en train de taper
+            if (input_pos > 0) {
+                clear_current_line();
+            }
+            
             if (recv_line(fd, buf, sizeof(buf)) < 0) {
                 printf(COLOR_RED "✗ Déconnecté du serveur.\n" COLOR_RESET);
                 break;
@@ -204,7 +234,7 @@ int main(int argc, char **argv) {
                 
                 if (!in_game) {
                     printf(COLOR_BLUE "> " COLOR_RESET);
-                    fflush(stdout);
+                    redisplay_prompt("");
                 }
             }
             // Liste des parties
@@ -232,8 +262,7 @@ int main(int argc, char **argv) {
                 printf(COLOR_MAGENTA "========================" COLOR_RESET "\n\n");
                 
                 if (!in_game) {
-                    printf(COLOR_BLUE "> " COLOR_RESET);
-                    fflush(stdout);
+                    show_prompt();
                 }
             }
             // Défi reçu
@@ -246,8 +275,7 @@ int main(int argc, char **argv) {
                 printf("Tapez " COLOR_GREEN "'/accept %s'" COLOR_RESET " ou " COLOR_RED "'/refuse %s'" COLOR_RESET " pour répondre\n\n", challenger, challenger);
                 
                 if (!in_game) {
-                    printf(COLOR_BLUE "> " COLOR_RESET);
-                    fflush(stdout);
+                    show_prompt();
                 }
             }
             else if (!strncmp(buf, "ROLE ", 5)) {
@@ -318,8 +346,7 @@ int main(int argc, char **argv) {
                 else if (strstr(buf + 4, "Bio enregistrée")) {
                     editing_bio = 0;
                     printf(COLOR_GREEN "✓ %s\n" COLOR_RESET, buf + 4);
-                    printf(COLOR_BLUE "> " COLOR_RESET);
-                    fflush(stdout);
+                    show_prompt();
                 }
                 else {
                     // Colorer les messages d'erreur en rouge
@@ -342,10 +369,9 @@ int main(int argc, char **argv) {
                     
                     if (myturn && strstr(buf + 4, "invalide")) {
                         printf(COLOR_GREEN "➤ À vous de jouer" COLOR_RESET " (/0-11, /d, /q): ");
-                        fflush(stdout);
+                        redisplay_prompt("");
                     } else if (!in_game && !editing_bio) {
-                        printf(COLOR_BLUE "> " COLOR_RESET);
-                        fflush(stdout);
+                        show_prompt();
                     }
                 }
             }
@@ -354,14 +380,19 @@ int main(int argc, char **argv) {
                 // Afficher tout le contenu de la partie (tout est déjà dans buf après "REPLAY\n")
                 printf("\n" COLOR_BLUE "%s\n" COLOR_RESET, buf + 7);  // Afficher après "REPLAY\n"
                 if (!in_game) {
-                    printf(COLOR_BLUE "> " COLOR_RESET);
+                    show_prompt();
                 }
-                fflush(stdout);
             }
             // Message de chat
             else if (!strncmp(buf, "CHAT ", 5)) {
                 printf("\n" COLOR_YELLOW "💬 %s\n" COLOR_RESET, buf + 5);
-                // Ne pas réafficher le prompt automatiquement
+                // Réafficher le prompt avec le texte en cours
+                if (!in_game) {
+                    show_prompt();
+                } else if (myturn) {
+                    printf(COLOR_GREEN "➤ À vous de jouer" COLOR_RESET " (/0-11, /d, /q): ");
+                    redisplay_prompt("");
+                }
             }
             // Bio reçue
             else if (!strncmp(buf, "BIO", 3)) {
@@ -380,8 +411,7 @@ int main(int argc, char **argv) {
                 }
                 
                 if (!in_game) {
-                    printf(COLOR_BLUE "> " COLOR_RESET);
-                    fflush(stdout);
+                    show_prompt();
                 }
             }
             else if (!strncmp(buf, "END ", 4)) {
@@ -389,8 +419,7 @@ int main(int argc, char **argv) {
                 in_game = 0;
                 myturn = 0;
                 printf("\n" COLOR_GREEN "✓ Partie terminée!\n" COLOR_RESET);
-                printf(COLOR_BLUE "> " COLOR_RESET);
-                fflush(stdout);
+                show_prompt();
             }
             else {
                 puts(buf);
@@ -399,23 +428,60 @@ int main(int argc, char **argv) {
         
         // Entrée utilisateur
         if (FD_ISSET(STDIN_FILENO, &rfds)) {
-            if (!fgets(buf, sizeof(buf), stdin)) {
+            char c;
+            if (read(STDIN_FILENO, &c, 1) <= 0) {
                 break;
             }
             
-            // Supprimer le '\n'
-            len = strlen(buf);
-            if (len > 0 && buf[len - 1] == '\n') {
-                buf[len - 1] = '\0';
-            }
-            
-            // Ligne vide
-            if (strlen(buf) == 0) {
-                // En mode édition de bio, envoyer la ligne vide pour terminer
-                if (editing_bio) {
-                    send(fd, "\n", 1, 0);
+            // Enter pressé - traiter la ligne
+            if (c == '\n') {
+                // Copier le buffer dans buf pour traitement
+                strncpy(buf, input_buffer, sizeof(buf) - 1);
+                buf[sizeof(buf) - 1] = '\0';
+                
+                // Réinitialiser le buffer de saisie
+                input_buffer[0] = '\0';
+                input_pos = 0;
+                
+                // Effacer la ligne actuelle (contient le texte tapé)
+                clear_current_line();
+                
+                // Ligne vide
+                if (strlen(buf) == 0) {
+                    // En mode édition de bio, envoyer la ligne vide pour terminer
+                    if (editing_bio) {
+                        send(fd, "\n", 1, 0);
+                    }
+                    // Sinon, ignorer et réafficher le prompt
+                    else if (!in_game) {
+                        show_prompt();
+                    } else if (myturn) {
+                        printf(COLOR_GREEN "➤ À vous de jouer" COLOR_RESET " (/0-11, /d, /q): ");
+                        fflush(stdout);
+                    }
+                    continue;
                 }
-                // Sinon, ignorer
+            }
+            // Backspace/Delete
+            else if (c == 127 || c == 8) {
+                if (input_pos > 0) {
+                    input_pos--;
+                    input_buffer[input_pos] = '\0';
+                    printf("\b \b");  // Effacer le caractère
+                    fflush(stdout);
+                }
+                continue;
+            }
+            // Caractère normal
+            else if (c >= 32 && c < 127 && input_pos < sizeof(input_buffer) - 1) {
+                input_buffer[input_pos++] = c;
+                input_buffer[input_pos] = '\0';
+                printf("%c", c);  // Afficher le caractère
+                fflush(stdout);
+                continue;
+            }
+            // Caractère de contrôle ignoré
+            else {
                 continue;
             }
             
@@ -427,8 +493,7 @@ int main(int argc, char **argv) {
                 if (!strcmp(cmd, "help")) {
                     print_help();
                     if (!in_game) {
-                        printf(COLOR_BLUE "> " COLOR_RESET);
-                        fflush(stdout);
+                        show_prompt();
                     }
                 } else if (!strcmp(cmd, "q")) {
                     send(fd, "QUIT\n", 5, 0);
@@ -513,8 +578,7 @@ int main(int argc, char **argv) {
                     } else {
                         printf(COLOR_RED "✗ Commande inconnue. Tapez '/help' pour voir les commandes.\n" COLOR_RESET);
                         if (!in_game) {
-                            printf(COLOR_BLUE "> " COLOR_RESET);
-                            fflush(stdout);
+                            show_prompt();
                         }
                     }
                 }
@@ -537,6 +601,9 @@ int main(int argc, char **argv) {
                         send(fd, out, strlen(out), 0);
                     } else {
                         printf(COLOR_RED "✗ Usage: @<username> <message>\n" COLOR_RESET);
+                        if (!in_game) {
+                            show_prompt();
+                        }
                     }
                 } else {
                     // Message de chat normal
@@ -545,7 +612,13 @@ int main(int argc, char **argv) {
                     send(fd, out, strlen(out), 0);
                 }
                 
-                // Ne pas réafficher le prompt après un message de chat
+                // Réafficher le prompt après un message de chat
+                if (!in_game) {
+                    show_prompt();
+                } else if (myturn) {
+                    printf(COLOR_GREEN "➤ À vous de jouer" COLOR_RESET " (/0-11, /d, /q): ");
+                    fflush(stdout);
+                }
             }
         }
     }
