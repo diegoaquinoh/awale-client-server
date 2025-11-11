@@ -81,10 +81,6 @@ static int is_valid_username(const char* username) {
 
 /**
  * Reçoit une ligne depuis un socket
- * @param fd Socket file descriptor
- * @param buf Buffer pour stocker la ligne
- * @param cap Capacité du buffer
- * @return Nombre de caractères lus, ou -1 en cas d'erreur
  */
 static int recv_line(int fd, char *buf, size_t cap) {
     size_t n = 0;
@@ -107,10 +103,9 @@ static int recv_line(int fd, char *buf, size_t cap) {
     buf[n] = 0;
     return (int)n;
 }
+
 /**
  * Envoie une ligne vers un socket
- * @param fd Socket file descriptor
- * @param s Chaîne à envoyer
  */
 static void send_line(int fd, const char* s) {
     send(fd, s, strlen(s), 0);
